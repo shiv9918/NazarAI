@@ -1,0 +1,8 @@
+{
+  "name": "AI CivicEye",
+  "description": "AI-powered civic monitoring platform for Delhi using computer vision for automated issue detection and resolution tracking.",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera"
+  ]
+}
