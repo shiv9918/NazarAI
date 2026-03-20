@@ -13,7 +13,7 @@ async function startServer() {
   const app = express();
 
   app.use(cors({
-    origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    origin: env.corsOrigins,
     credentials: true,
   }));
   app.use(express.json({ limit: '20mb' }));
