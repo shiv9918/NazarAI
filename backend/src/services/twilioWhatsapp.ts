@@ -21,7 +21,12 @@ function getTwilioWhatsappFromNumber() {
   return `whatsapp:${env.twilioWhatsappNumber}`;
 }
 
-export async function sendTwilioWhatsAppMessage(params: { to: string; message: string; mediaUrl?: string | null }) {
+export async function sendTwilioWhatsAppMessage(params: {
+  to: string;
+  message: string;
+  mediaUrl?: string | null;
+  mediaUrls?: string[];
+}) {
   const authHeader = getTwilioAuthHeader();
   const fromNumber = getTwilioWhatsappFromNumber();
   if (!authHeader || !fromNumber || !env.twilioAccountSid) {
@@ -35,8 +40,13 @@ export async function sendTwilioWhatsAppMessage(params: { to: string; message: s
     Body: params.message,
   });
 
-  if (params.mediaUrl && /^https?:\/\//i.test(params.mediaUrl)) {
-    form.set('MediaUrl', params.mediaUrl);
+  const mediaUrls = [
+    ...(params.mediaUrl ? [params.mediaUrl] : []),
+    ...(params.mediaUrls || []),
+  ].filter((url) => /^https?:\/\//i.test(url));
+
+  for (const mediaUrl of mediaUrls) {
+    form.append('MediaUrl', mediaUrl);
   }
 
   const response = await fetch(endpoint, {

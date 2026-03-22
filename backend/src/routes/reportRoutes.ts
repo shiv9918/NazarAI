@@ -4,7 +4,7 @@ import { pool } from '../config/db';
 import { requireAuth } from '../middleware/auth';
 import { UserRole } from '../types/auth';
 import { assignDepartment, normalizeDepartment, validDepartments } from '../utils/reportAssignment';
-import { sendTwilioWhatsAppMessage } from '../services/twilioWhatsapp';
+import { sendResolvedWhatsappNotificationWithFeedback } from '../services/whatsappResolutionFlow';
 
 type DbUser = {
   id: string;
@@ -21,16 +21,8 @@ type DbReport = {
   citizen_id: string;
   status: 'reported' | 'in_progress' | 'resolved';
   proof_image_url: string | null;
-};
-
-type ReportWithCitizenPhone = {
-  id: string;
-  department: string;
-  type: string;
-  location: string;
-  status: 'reported' | 'in_progress' | 'resolved';
-  proof_image_url: string | null;
-  citizen_phone: string | null;
+  reported_at: Date;
+  resolution_notes: string | null;
 };
 
 type LeaderboardRow = {
@@ -61,6 +53,8 @@ const reportPayloadSchema = z.object({
 const updateStatusSchema = z.object({
   status: z.enum(['reported', 'in_progress', 'resolved']),
   proofImageUrl: z.string().trim().optional().nullable(),
+  resolutionNotes: z.string().trim().optional().nullable(),
+  resolvedByOfficer: z.string().trim().optional().nullable(),
 });
 
 const updateReportSchema = z.object({
@@ -68,6 +62,7 @@ const updateReportSchema = z.object({
   department: z.string().trim().optional(),
   resolutionNotes: z.string().trim().optional().nullable(),
   proofImageUrl: z.string().trim().optional().nullable(),
+  resolvedByOfficer: z.string().trim().optional().nullable(),
   isEmergency: z.boolean().optional(),
 });
 
@@ -88,6 +83,12 @@ const selectReportProjection = `
   status,
   resolution_notes AS "resolutionNotes",
   proof_image_url AS "proofImageUrl",
+  resolved_by_officer AS "resolvedByOfficer",
+  resolution_time_taken_hours AS "resolutionTimeTakenHours",
+  citizen_rating AS "citizenRating",
+  citizen_feedback AS "citizenFeedback",
+  reopen_votes AS "reopenVotes",
+  is_reopened AS "isReopened",
   resolved_at AS "resolvedAt",
   reported_at AS "reportedAt",
   updated_at AS "updatedAt",
@@ -102,50 +103,9 @@ function isValidProofImage(value: string) {
   return trimmed.startsWith('data:image/') || /^https?:\/\//i.test(trimmed);
 }
 
-function normalizePhone(raw: string) {
-  return raw.replace(/[^\d+]/g, '').trim();
-}
-
-async function sendResolvedWhatsappNotification(reportId: string) {
-  const result = await pool.query<ReportWithCitizenPhone>(
-    `SELECT
-      r.id,
-      r.department,
-      r.type,
-      r.location,
-      r.status,
-      r.proof_image_url,
-      u.phone AS citizen_phone
-     FROM reports r
-     JOIN users u ON u.id = r.citizen_id
-     WHERE r.id = $1
-     LIMIT 1`,
-    [reportId]
-  );
-
-  const report = result.rows[0];
-  if (!report || report.status !== 'resolved' || !report.citizen_phone) {
-    return;
-  }
-
-  const to = report.citizen_phone.startsWith('whatsapp:')
-    ? report.citizen_phone
-    : (() => {
-      const normalized = normalizePhone(report.citizen_phone);
-      const withPlus = normalized.startsWith('+') ? normalized : `+${normalized}`;
-      return `whatsapp:${withPlus}`;
-    })();
-
-  const message = `Update from Nazar AI: Your complaint ${report.id} has been resolved by ${report.department}. Issue: ${report.type}. Location: ${report.location}.`;
-  const mediaUrl = report.proof_image_url && /^https?:\/\//i.test(report.proof_image_url)
-    ? report.proof_image_url
-    : null;
-
-  await sendTwilioWhatsAppMessage({
-    to,
-    message: mediaUrl ? `${message} Attached is the department proof image.` : `${message} Proof image is available in app.`,
-    mediaUrl,
-  });
+function isValidResolutionNotes(value: string | null | undefined) {
+  if (!value) return false;
+  return value.trim().length >= 20;
 }
 
 async function getCurrentUser(userId: string) {
@@ -351,7 +311,7 @@ router.get('/:id', async (req, res) => {
   }
 
   const reportResult = await pool.query<DbReport>(
-    `SELECT id, department, citizen_id, status, proof_image_url
+    `SELECT id, department, citizen_id, status, proof_image_url, reported_at, resolution_notes
      FROM reports
      WHERE id = $1
      LIMIT 1`,
@@ -396,6 +356,7 @@ router.patch('/:id', async (req, res) => {
     parsed.data.department !== undefined ||
     parsed.data.resolutionNotes !== undefined ||
     parsed.data.proofImageUrl !== undefined ||
+    parsed.data.resolvedByOfficer !== undefined ||
     parsed.data.isEmergency !== undefined;
 
   if (!hasAnyUpdate) {
@@ -452,6 +413,18 @@ router.patch('/:id', async (req, res) => {
     return res.status(400).json({ message: 'A valid proof image is required when marking issue as resolved.' });
   }
 
+  const nextResolutionNotes = parsed.data.resolutionNotes !== undefined
+    ? parsed.data.resolutionNotes
+    : existingReport.resolution_notes ?? null;
+
+  if (existingReport.status !== 'resolved' && nextStatus === 'resolved' && !isValidResolutionNotes(nextResolutionNotes)) {
+    return res.status(400).json({ message: 'Resolution notes are mandatory and must be at least 20 characters.' });
+  }
+
+  const officerName = parsed.data.resolvedByOfficer && parsed.data.resolvedByOfficer.trim().length
+    ? parsed.data.resolvedByOfficer.trim()
+    : `${currentUser.first_name} ${currentUser.last_name}`.trim();
+
   const updated = await pool.query(
     `UPDATE reports
      SET status = CASE WHEN $1::boolean THEN $2::report_status ELSE status END,
@@ -459,12 +432,27 @@ router.patch('/:id', async (req, res) => {
          resolution_notes = CASE WHEN $5::boolean THEN $6 ELSE resolution_notes END,
          proof_image_url = CASE WHEN $7::boolean THEN $8 ELSE proof_image_url END,
          is_emergency = CASE WHEN $9::boolean THEN $10 ELSE is_emergency END,
+         resolved_by_officer = CASE
+           WHEN (CASE WHEN $1::boolean THEN $2::report_status ELSE status END) = 'resolved'::report_status
+             THEN $11
+           ELSE resolved_by_officer
+         END,
+         resolution_time_taken_hours = CASE
+           WHEN (CASE WHEN $1::boolean THEN $2::report_status ELSE status END) = 'resolved'::report_status
+             THEN GREATEST(0, ROUND(EXTRACT(EPOCH FROM (NOW() - reported_at)) / 3600.0))::int
+           ELSE resolution_time_taken_hours
+         END,
+         is_reopened = CASE
+           WHEN (CASE WHEN $1::boolean THEN $2::report_status ELSE status END) = 'resolved'::report_status
+             THEN FALSE
+           ELSE is_reopened
+         END,
          resolved_at = CASE
            WHEN (CASE WHEN $1::boolean THEN $2::report_status ELSE status END) = 'resolved'::report_status
              THEN COALESCE(resolved_at, NOW())
            ELSE NULL
          END
-     WHERE id = $11
+     WHERE id = $12
      RETURNING ${selectReportProjection}`,
     [
       parsed.data.status !== undefined,
@@ -477,12 +465,13 @@ router.patch('/:id', async (req, res) => {
       parsed.data.proofImageUrl ?? null,
       parsed.data.isEmergency !== undefined,
       parsed.data.isEmergency ?? null,
+      officerName,
       req.params.id,
     ]
   );
 
   if (existingReport.status !== 'resolved' && updated.rows[0]?.status === 'resolved') {
-    await sendResolvedWhatsappNotification(req.params.id);
+    await sendResolvedWhatsappNotificationWithFeedback(req.params.id);
   }
 
   return res.json({ report: updated.rows[0] });
@@ -513,7 +502,7 @@ router.patch('/:id/status', async (req, res) => {
   }
 
   const reportResult = await pool.query<DbReport>(
-    `SELECT id, department, citizen_id, status, proof_image_url
+    `SELECT id, department, citizen_id, status, proof_image_url, reported_at, resolution_notes
      FROM reports
      WHERE id = $1
      LIMIT 1`,
@@ -532,22 +521,44 @@ router.patch('/:id/status', async (req, res) => {
     return res.status(403).json({ message: 'You cannot update reports outside your department.' });
   }
 
+  if (report.status !== 'resolved' && parsed.data.status === 'resolved' && !isValidResolutionNotes(parsed.data.resolutionNotes)) {
+    return res.status(400).json({ message: 'Resolution notes are mandatory and must be at least 20 characters.' });
+  }
+
+  const officerName = parsed.data.resolvedByOfficer && parsed.data.resolvedByOfficer.trim().length
+    ? parsed.data.resolvedByOfficer.trim()
+    : `${currentUser.first_name} ${currentUser.last_name}`.trim();
+
   // Update with proof image if provided
   const updated = await pool.query(
     `UPDATE reports
      SET status = $1::report_status,
          proof_image_url = $2,
+         resolution_notes = CASE WHEN $1::report_status = 'resolved'::report_status THEN $3 ELSE resolution_notes END,
+         resolved_by_officer = CASE WHEN $1::report_status = 'resolved'::report_status THEN $4 ELSE resolved_by_officer END,
+         resolution_time_taken_hours = CASE
+           WHEN $1::report_status = 'resolved'::report_status
+             THEN GREATEST(0, ROUND(EXTRACT(EPOCH FROM (NOW() - reported_at)) / 3600.0))::int
+           ELSE resolution_time_taken_hours
+         END,
+         is_reopened = CASE WHEN $1::report_status = 'resolved'::report_status THEN FALSE ELSE is_reopened END,
          resolved_at = CASE
            WHEN $1::report_status = 'resolved'::report_status THEN NOW()
            ELSE resolved_at
          END
-     WHERE id = $3
+     WHERE id = $5
      RETURNING ${selectReportProjection}`,
-    [parsed.data.status, parsed.data.proofImageUrl || null, req.params.id]
+    [
+      parsed.data.status,
+      parsed.data.proofImageUrl || null,
+      parsed.data.resolutionNotes || null,
+      officerName,
+      req.params.id,
+    ]
   );
 
   if (report.status !== 'resolved' && updated.rows[0]?.status === 'resolved') {
-    await sendResolvedWhatsappNotification(req.params.id);
+    await sendResolvedWhatsappNotificationWithFeedback(req.params.id);
   }
 
   return res.json({ report: updated.rows[0] });

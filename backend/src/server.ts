@@ -6,6 +6,9 @@ import { runMigrations } from './db/runMigrations';
 import authRoutes from './routes/authRoutes';
 import reportRoutes from './routes/reportRoutes';
 import whatsappRoutes from './routes/whatsappRoutes';
+import { sendPendingFeedbackReminders } from './services/whatsappResolutionFlow';
+
+let feedbackReminderInterval: NodeJS.Timeout | null = null;
 
 async function startServer() {
   await testConnection();
@@ -28,6 +31,15 @@ async function startServer() {
   app.use('/api/reports', reportRoutes);
   app.use('/api/whatsapp', whatsappRoutes);
 
+  // Periodically remind citizens to submit satisfaction feedback after resolution.
+  feedbackReminderInterval = setInterval(() => {
+    sendPendingFeedbackReminders().catch((error) => {
+      console.error('Feedback reminder loop failed:', error);
+    });
+  }, 15 * 60 * 1000);
+
+  void sendPendingFeedbackReminders();
+
   app.listen(env.port, '0.0.0.0', () => {
     console.log(`Backend running at http://localhost:${env.port}`);
   });
@@ -40,6 +52,9 @@ startServer().catch(async (error) => {
 });
 
 process.on('SIGINT', async () => {
+  if (feedbackReminderInterval) {
+    clearInterval(feedbackReminderInterval);
+  }
   await pool.end();
   process.exit(0);
 });

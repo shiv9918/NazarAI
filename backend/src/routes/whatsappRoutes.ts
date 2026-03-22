@@ -4,6 +4,8 @@ import { env } from '../config/env';
 import { assignDepartment } from '../utils/reportAssignment';
 import { detectIssueFromImage } from '../services/geminiVision';
 import { sendTwilioWhatsAppMessage } from '../services/twilioWhatsapp';
+import { handleIncomingResolutionFeedback } from '../services/whatsappResolutionFlow';
+import { reverseGeocodeCoordinates, formatGeocodeResult } from '../services/geocodingService';
 
 type DbCitizen = {
   id: string;
@@ -22,6 +24,7 @@ type DbWhatsappSession = {
   pending_lat: number | null;
   pending_lng: number | null;
   pending_media_url: string | null;
+  flow_state: 'waiting_for_image' | 'waiting_for_location' | 'ready_to_process' | null;
 };
 
 function xmlMessage(text: string) {
@@ -129,7 +132,7 @@ type ProcessingPayload = {
 
 async function getWhatsappSession(citizenId: string, fromPhone: string) {
   const result = await pool.query<DbWhatsappSession>(
-    `SELECT citizen_id, from_phone, pending_body, pending_address, pending_lat, pending_lng, pending_media_url
+    `SELECT citizen_id, from_phone, pending_body, pending_address, pending_lat, pending_lng, pending_media_url, flow_state
      FROM whatsapp_sessions
      WHERE citizen_id = $1 AND from_phone = $2
      LIMIT 1`,
@@ -147,6 +150,7 @@ async function upsertWhatsappSession(params: {
   pendingLat: number | null;
   pendingLng: number | null;
   pendingMediaUrl: string | null;
+  flowState: 'waiting_for_image' | 'waiting_for_location' | 'ready_to_process' | null;
 }) {
   await pool.query(
     `INSERT INTO whatsapp_sessions (
@@ -157,9 +161,10 @@ async function upsertWhatsappSession(params: {
       pending_lat,
       pending_lng,
       pending_media_url,
+      flow_state,
       updated_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
     ON CONFLICT (citizen_id, from_phone)
     DO UPDATE SET
       pending_body = EXCLUDED.pending_body,
@@ -167,6 +172,7 @@ async function upsertWhatsappSession(params: {
       pending_lat = EXCLUDED.pending_lat,
       pending_lng = EXCLUDED.pending_lng,
       pending_media_url = EXCLUDED.pending_media_url,
+      flow_state = EXCLUDED.flow_state,
       updated_at = NOW()`,
     [
       params.citizenId,
@@ -176,6 +182,7 @@ async function upsertWhatsappSession(params: {
       params.pendingLat,
       params.pendingLng,
       params.pendingMediaUrl,
+      params.flowState,
     ]
   );
 }
@@ -219,6 +226,7 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
     imageBase64: image.dataUrl.split(',')[1],
     mimeType: image.mimeType,
     geminiApiKey: env.geminiApiKey,
+    reportText: payload.bodyText,
   });
 
   const assignedDepartment = assignDepartment(detection.issueType, null);
@@ -294,7 +302,14 @@ router.post('/webhook', async (req, res) => {
   const bodyText = String(req.body?.Body || '');
   const mediaCount = Number(req.body?.NumMedia || '0');
 
-  console.log(`[WhatsApp] Received message - From: ${from}, Body: ${bodyText.substring(0, 100)}, Media: ${mediaCount}`);
+  // Extract location from Twilio (when citizen shares live location from WhatsApp)
+  const latParam = req.body?.Latitude ?? req.body?.latitude;
+  const lngParam = req.body?.Longitude ?? req.body?.longitude;
+  const receivedLat = Number(latParam);
+  const receivedLng = Number(lngParam);
+  const isLocationMessage = !Number.isNaN(receivedLat) && !Number.isNaN(receivedLng);
+
+  console.log(`[WhatsApp] Received - From: ${from}, Body: ${bodyText.substring(0, 100)}, Media: ${mediaCount}, IsLocation: ${isLocationMessage}`);
 
   if (!from) {
     res.type('text/xml');
@@ -302,86 +317,116 @@ router.post('/webhook', async (req, res) => {
   }
 
   const citizen = await resolveCitizenByPhone(from);
-  console.log(`[WhatsApp] Citizen lookup for ${from}: ${citizen ? 'FOUND (' + citizen.id + ')' : 'NOT FOUND'}`);
-  
   if (!citizen) {
-    console.log(`[WhatsApp] Available citizens in DB with phone numbers:`);
-    const allCitizens = await pool.query(`SELECT id, first_name, phone FROM users WHERE role = 'citizen' AND phone IS NOT NULL`);
-    allCitizens.rows.forEach(c => console.log(`  - ${c.first_name} (${c.id}): ${c.phone}`));
-    
     res.type('text/xml');
     return res.status(200).send(xmlMessage('Your number is not linked to a citizen account. Please add this WhatsApp number in Settings and try again.'));
   }
 
   const fromPhone = normalizePhone(stripWhatsappPrefix(from));
-  const session = await getWhatsappSession(citizen.id, fromPhone);
 
-  const currentMediaUrl = mediaCount > 0 ? String(req.body?.MediaUrl0 || '') : '';
-  const mediaUrl = currentMediaUrl || session?.pending_media_url || '';
-
-  const latParam = req.body?.Latitude ?? req.body?.latitude;
-  const lngParam = req.body?.Longitude ?? req.body?.longitude;
-  let lat = Number(latParam);
-  let lng = Number(lngParam);
-
-  if (Number.isNaN(lat) || Number.isNaN(lng)) {
-    const parsed = parseCoordinatesFromBody(bodyText);
-    if (parsed) {
-      lat = parsed.lat;
-      lng = parsed.lng;
-    }
-  }
-
-  const address = extractAddressText(bodyText, req.body?.Address || req.body?.address || null);
-
-  const finalLat = Number.isNaN(lat) ? session?.pending_lat ?? null : lat;
-  const finalLng = Number.isNaN(lng) ? session?.pending_lng ?? null : lng;
-  const finalAddress = address || session?.pending_address || null;
-  const finalBody = bodyText.trim() || session?.pending_body || null;
-
-  const hasMedia = Boolean(mediaUrl);
-  const hasAddress = Boolean(finalAddress);
-  const hasCoordinates = finalLat !== null && finalLng !== null;
-
-  if (!hasMedia || !hasAddress || !hasCoordinates) {
-    await upsertWhatsappSession({
-      citizenId: citizen.id,
-      fromPhone,
-      pendingBody: finalBody,
-      pendingAddress: finalAddress,
-      pendingLat: finalLat,
-      pendingLng: finalLng,
-      pendingMediaUrl: hasMedia ? mediaUrl : null,
-    });
-
-    const requirementMessage = buildMissingRequirementMessage(hasMedia, hasAddress, hasCoordinates);
-    res.type('text/xml');
-    return res.status(200).send(xmlMessage(requirementMessage));
-  }
-
-  const payload: ProcessingPayload = {
-    from,
-    bodyText: finalBody || '',
-    mediaUrl,
-    lat: finalLat as number,
-    lng: finalLng as number,
-    address: finalAddress as string,
-    citizen,
-  };
-
-  setImmediate(() => {
-    processIncomingWhatsappReport(payload).catch(async (error) => {
-      console.error('WhatsApp report processing failed:', error);
-      await clearWhatsappSession(payload.citizen.id, normalizePhone(stripWhatsappPrefix(payload.from)));
-      await sendTwilioWhatsAppMessage({
-        to: payload.from,
-        message: 'We received your message but could not complete report creation. Please retry in a moment.',
-      });
-    });
+  // Check if this is a resolution feedback (rating reply)
+  const feedbackResult = await handleIncomingResolutionFeedback({
+    citizenId: citizen.id,
+    fromPhone,
+    bodyText,
   });
 
+  if (feedbackResult.handled) {
+    res.type('text/xml');
+    return res.status(200).send(xmlMessage(feedbackResult.message));
+  }
+
+  // Get existing session to check flow state
+  const session = await getWhatsappSession(citizen.id, fromPhone);
+
+  // ========== FLOW STATE: Waiting for Image ==========
+  // If no session exists OR user is starting fresh
+  if (!session || session.flow_state === null || session.flow_state === 'waiting_for_image') {
+    // Check if image was sent
+    const currentMediaUrl = mediaCount > 0 ? String(req.body?.MediaUrl0 || '') : '';
+
+    if (!currentMediaUrl && !isLocationMessage) {
+      // No image, no location - user just sent text
+      // This is the first message, ask them to send image
+      const welcomeMsg = `📸 Welcome to Nazar AI!\n\nPlease send us:\n1. A photo of the issue\n2. A brief description (optional)\n\nExample: Send a photo of a pothole, or flooded street.`;
+      res.type('text/xml');
+      return res.status(200).send(xmlMessage(welcomeMsg));
+    }
+
+    if (currentMediaUrl && !isLocationMessage) {
+      // Image received, store it and ask for location
+      console.log(`[WhatsApp] Image received for ${from}, now asking for location`);
+
+      await upsertWhatsappSession({
+        citizenId: citizen.id,
+        fromPhone,
+        pendingBody: bodyText.trim() || null,
+        pendingAddress: null,
+        pendingLat: null,
+        pendingLng: null,
+        pendingMediaUrl: currentMediaUrl,
+        flowState: 'waiting_for_location',
+      });
+
+      const askLocationMsg = `✅ Got your photo and description!\n\n📍 Now please share your current location:\n1. Click the attachment button (+) in WhatsApp\n2. Select "Location"\n3. Share your live location or current location\n\nThis helps us pinpoint the exact issue location.`;
+      res.type('text/xml');
+      return res.status(200).send(xmlMessage(askLocationMsg));
+    }
+
+    res.type('text/xml');
+    return res.status(200).send(xmlMessage('Thanks! Please send your photo and then your location to complete the report.'));
+  }
+
+  // ========== FLOW STATE: Waiting for Location ==========
+  if (session.flow_state === 'waiting_for_location') {
+    if (!isLocationMessage) {
+      // User sent text instead of location, remind them
+      res.type('text/xml');
+      return res.status(200).send(xmlMessage('Please share your current location using WhatsApp location feature (click +, select Location, then share your live location).'));
+    }
+
+    // Location received! Process the report
+    console.log(`[WhatsApp] Location received: ${receivedLat}, ${receivedLng}`);
+
+    // Reverse geocode the location to get address
+    const geocodeResult = await reverseGeocodeCoordinates(receivedLat, receivedLng);
+    if (!geocodeResult) {
+      await clearWhatsappSession(citizen.id, fromPhone);
+      res.type('text/xml');
+      return res.status(200).send(xmlMessage('We could not identify your location. Please try again with a different location.'));
+    }
+
+    console.log(`[WhatsApp] Location geocoded: ${geocodeResult.address}`);
+
+    // Now we have everything, process the report
+    const payload: ProcessingPayload = {
+      from,
+      bodyText: session.pending_body || '',
+      mediaUrl: session.pending_media_url || '',
+      lat: receivedLat,
+      lng: receivedLng,
+      address: geocodeResult.address,
+      citizen,
+    };
+
+    setImmediate(() => {
+      processIncomingWhatsappReport(payload).catch(async (error) => {
+        console.error('WhatsApp report processing failed:', error);
+        await clearWhatsappSession(citizen.id, fromPhone);
+        await sendTwilioWhatsAppMessage({
+          to: from,
+          message: '❌ We could not complete your report. Please try again in a moment.',
+        });
+      });
+    });
+
+    res.type('text/xml');
+    return res.status(200).send(xmlMessage('✅ Processing your report. You will receive a confirmation with your complaint ID shortly.'));
+  }
+
+  // Default fallback
   res.type('text/xml');
-  return res.status(200).send(xmlMessage('Thanks! We received your report and are processing it now. You will get a confirmation message shortly.'));
+  return res.status(200).send(xmlMessage('Thanks! We received your message. Please follow the steps to submit your report.'));
 });
 
 export default router;

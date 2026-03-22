@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import L from 'leaflet';
 import { Filter, Info, AlertCircle, CheckCircle2, Clock, Zap, MapPin } from 'lucide-react';
 import { getCurrentPosition } from '../utils/location';
-import { db } from '../firebase';
-import { collection, query, onSnapshot, where } from 'firebase/firestore';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+const AUTH_TOKEN_KEY = 'nazarai_auth_token';
 
 // Custom Marker Creators
 const createCustomIcon = (severity: number) => {
@@ -34,23 +35,50 @@ export default function CityMap() {
   const [mapCenter, setMapCenter] = useState<[number, number]>([28.6139, 77.2090]);
 
   useEffect(() => {
-    let q = query(collection(db, 'reports'));
-    
-    if (filter !== 'all') {
-      q = query(collection(db, 'reports'), where('type', '==', filter));
-    }
+    let isCancelled = false;
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const reportsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setReports(reportsData);
-    }, (error) => {
-      console.error("Error fetching reports for map:", error);
-    });
-    
-    return () => unsubscribe();
+    const fetchReports = async () => {
+      try {
+        const token = localStorage.getItem(AUTH_TOKEN_KEY);
+        if (!token) {
+          if (!isCancelled) setReports([]);
+          return;
+        }
+
+        const response = await fetch(`${API_BASE_URL}/api/reports`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.message || 'Failed to load reports for map.');
+        }
+
+        let reportsData = Array.isArray(payload?.reports) ? payload.reports : [];
+        if (filter !== 'all') {
+          reportsData = reportsData.filter((report: any) => report.type === filter);
+        }
+
+        if (!isCancelled) {
+          setReports(reportsData);
+        }
+      } catch (error) {
+        console.error('Error fetching reports for map:', error);
+        if (!isCancelled) {
+          setReports([]);
+        }
+      }
+    };
+
+    void fetchReports();
+    const intervalId = setInterval(fetchReports, 30000);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(intervalId);
+    };
   }, [filter]);
 
   useEffect(() => {

@@ -5,21 +5,59 @@ type VisionDetection = {
 };
 
 const DEFAULT_DETECTION: VisionDetection = {
-  issueType: 'garbage',
-  severity: 5,
+  issueType: 'unknown',
+  severity: 3,
   aiDescription: 'Issue detected from WhatsApp report image.',
+};
+
+const ISSUE_ALIASES: Record<string, string> = {
+  garbage: 'garbage',
+  trash: 'garbage',
+  litter: 'garbage',
+  waste: 'garbage',
+  pothole: 'pothole',
+  road_damage: 'pothole',
+  road_crack: 'pothole',
+  broken_streetlight: 'broken_streetlight',
+  streetlight: 'broken_streetlight',
+  street_light: 'broken_streetlight',
+  light_outage: 'broken_streetlight',
+  water_leakage: 'water_leakage',
+  water_leak: 'water_leakage',
+  waterlogging: 'water_leakage',
+  water_logging: 'water_leakage',
+  pipe_leakage: 'water_leakage',
+  sewage_leakage: 'water_leakage',
+  illegal_dump: 'illegal_dump',
+  illegal_dumping: 'illegal_dump',
+  dump: 'illegal_dump',
+  unknown: 'unknown',
 };
 
 function normalizeIssueType(raw: string | undefined) {
   if (!raw) return DEFAULT_DETECTION.issueType;
   const normalized = raw.toLowerCase().trim().replace(/\s+/g, '_');
   if (!normalized) return DEFAULT_DETECTION.issueType;
-  return normalized;
+  return ISSUE_ALIASES[normalized] || DEFAULT_DETECTION.issueType;
 }
 
 function normalizeSeverity(raw: number | undefined) {
   if (!raw || Number.isNaN(raw)) return DEFAULT_DETECTION.severity;
   return Math.max(1, Math.min(10, Math.round(raw)));
+}
+
+function hasWaterLeakageHints(text?: string) {
+  if (!text) return false;
+  const t = text.toLowerCase();
+  return (
+    t.includes('water') ||
+    t.includes('leak') ||
+    t.includes('pipeline') ||
+    t.includes('pipe') ||
+    t.includes('tap') ||
+    t.includes('sewage') ||
+    t.includes('drain')
+  );
 }
 
 function parseJsonFromText(rawText: string): Record<string, unknown> | null {
@@ -47,6 +85,7 @@ export async function detectIssueFromImage(params: {
   imageBase64: string;
   mimeType: string;
   geminiApiKey?: string;
+  reportText?: string;
 }): Promise<VisionDetection> {
   if (!params.geminiApiKey) {
     return DEFAULT_DETECTION;
@@ -58,8 +97,12 @@ export async function detectIssueFromImage(params: {
     'You are classifying civic issues from a single citizen photo for municipal routing.',
     'Return only JSON with keys: issueType, severity, aiDescription.',
     'issueType must be one of: garbage, pothole, broken_streetlight, water_leakage, illegal_dump, unknown.',
+    'Choose unknown if image is unclear instead of guessing.',
+    'If visible flowing/spraying water from pipe/tap/drain is present, prefer water_leakage (not garbage).',
+    'Use garbage only when trash/litter is the dominant issue in the image.',
     'severity must be integer 1-10.',
     'aiDescription should be max 200 chars.',
+    params.reportText ? `Citizen note: ${params.reportText}` : '',
   ].join(' ');
 
   const response = await fetch(endpoint, {
@@ -82,6 +125,10 @@ export async function detectIssueFromImage(params: {
           ],
         },
       ],
+      generationConfig: {
+        temperature: 0.1,
+        responseMimeType: 'application/json',
+      },
     }),
   });
 
@@ -101,11 +148,26 @@ export async function detectIssueFromImage(params: {
     return DEFAULT_DETECTION;
   }
 
+  let issueType = normalizeIssueType(typeof parsed.issueType === 'string' ? parsed.issueType : undefined);
+  const severityValue =
+    typeof parsed.severity === 'number'
+      ? parsed.severity
+      : typeof parsed.severity === 'string'
+      ? Number(parsed.severity)
+      : undefined;
+
+  // If user text strongly suggests leakage and model guessed generic/incorrect class,
+  // bias toward water leakage to avoid common garbage false-positives.
+  if (hasWaterLeakageHints(params.reportText) && (issueType === 'unknown' || issueType === 'garbage')) {
+    issueType = 'water_leakage';
+  }
+
   return {
-    issueType: normalizeIssueType(typeof parsed.issueType === 'string' ? parsed.issueType : undefined),
-    severity: normalizeSeverity(typeof parsed.severity === 'number' ? parsed.severity : undefined),
-    aiDescription: typeof parsed.aiDescription === 'string' && parsed.aiDescription.trim().length
-      ? parsed.aiDescription.trim().slice(0, 200)
-      : DEFAULT_DETECTION.aiDescription,
+    issueType,
+    severity: normalizeSeverity(severityValue),
+    aiDescription:
+      typeof parsed.aiDescription === 'string' && parsed.aiDescription.trim().length
+        ? parsed.aiDescription.trim().slice(0, 200)
+        : DEFAULT_DETECTION.aiDescription,
   };
 }

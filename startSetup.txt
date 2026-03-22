@@ -1,0 +1,251 @@
+# Desktop Restart - Complete Startup Guide 🚀
+
+After restarting your desktop, here's the **exact order** to get everything running again:
+
+## ✅ Step-by-Step Startup Process
+
+### Step 1: Start PostgreSQL Database ⚙️
+```bash
+# Make sure PostgreSQL is running
+# On Windows, PostgreSQL usually auto-starts
+# Check if running:
+netstat -ano | findstr :5432
+# If nothing shows, restart PostgreSQL service
+```
+
+### Step 2: Start Backend (Terminal 1) 📦
+```bash
+# Open PowerShell/Terminal
+cd C:\Users\shiva\Downloads\NazarAI-main\NazarAI-main\backend
+
+npm run dev
+
+# Wait for:
+# ✅ "Server running on port 5000"
+# ✅ "[WhatsApp] Feedback reminder scheduler started"
+```
+
+### Step 3: Check Backend Health 🏥
+```bash
+# In another terminal
+curl http://localhost:5000/api/health
+
+# Should respond: {"ok":true,"service":"nazarai-backend"}
+```
+
+### Step 4: Start Cloudflare Tunnel (Terminal 2) 🌐
+**This is REQUIRED for WhatsApp!**
+
+```bash
+cd C:\Users\shiva\Downloads\NazarAI-main\NazarAI-main
+
+cloudflared tunnel run sit-charleston-subject-disclaimer
+
+# Wait for:
+# ✅ "Tunnel running on https://sit-charleston-subject-disclaimer.trycloudflare.com"
+```
+
+### Step 5: Start Frontend (Terminal 3) 🎨
+```bash
+cd C:\Users\shiva\Downloads\NazarAI-main\NazarAI-main
+
+npm run dev
+
+# Should show:
+# ✅ "Local:   http://localhost:5173/"
+```
+
+### Step 6: Update Twilio Webhook URL (One-Time) 📱
+If you restarted after a long break, update Twilio webhook:
+
+```
+1. Go to: https://www.twilio.com/console/sms/whatsapp/sandbox
+2. Find "Webhook URL when a message comes in"
+3. Update to: https://sit-charleston-subject-disclaimer.trycloudflare.com/api/whatsapp/webhook
+4. Save
+```
+
+## 📋 Quick Reference Table
+
+| Service | Command | Port | Check Command |
+|---------|---------|------|---------------|
+| PostgreSQL | Auto/Manual | 5432 | `netstat -ano \| findstr :5432` |
+| Backend | `npm run dev` | 5000 | `curl localhost:5000/api/health` |
+| Tunnel | `cloudflared tunnel run ...` | — | Check tunnel output |
+| Frontend | `npm run dev` | 5173 | Visit http://localhost:5173 |
+
+## 🚀 All-at-Once Script
+
+**Save this as `start-all.ps1`:**
+
+```powershell
+# Terminal 1: Backend
+Start-Process powershell -ArgumentList {
+    cd "C:\Users\shiva\Downloads\NazarAI-main\NazarAI-main\backend"
+    npm run dev
+}
+
+# Wait 3 seconds
+Start-Sleep -Seconds 3
+
+# Terminal 2: Tunnel
+Start-Process powershell -ArgumentList {
+    cd "C:\Users\shiva\Downloads\NazarAI-main\NazarAI-main"
+    cloudflared tunnel run sit-charleston-subject-disclaimer
+}
+
+# Wait 2 seconds
+Start-Sleep -Seconds 2
+
+# Terminal 3: Frontend
+Start-Process powershell -ArgumentList {
+    cd "C:\Users\shiva\Downloads\NazarAI-main\NazarAI-main"
+    npm run dev
+}
+
+Write-Host "✅ All services starting. Check terminals."
+```
+
+**Run it:**
+```bash
+powershell -ExecutionPolicy Bypass -File start-all.ps1
+```
+
+## 🔍 Verification Checklist
+
+After startup, verify in this order:
+
+```bash
+# 1. Frontend accessible?
+curl http://localhost:5173
+# Should get HTML response
+
+# 2. Backend health?
+curl http://localhost:5000/api/health
+# Should return: {"ok":true,"service":"nazarai-backend"}
+
+# 3. Tunnel working?
+# Check tunnel terminal - should show active URL
+
+# 4. WhatsApp webhook?
+curl -X POST https://sit-charleston-subject-disclaimer.trycloudflare.com/api/whatsapp/webhook \
+  -d "From=whatsapp:%2B919628993700&Body=test&NumMedia=0"
+# Should return XML response (HTTP 200)
+
+# 5. Database connected?
+# Backend logs should show no connection errors
+```
+
+## ⚠️ Common Issues After Restart
+
+| Issue | Solution |
+|-------|----------|
+| **Port 5000 already in use** | `netstat -ano \| findstr :5000` then kill process |
+| **"Cannot find module"** | Run `npm install` in both frontend and backend |
+| **Tunnel not connecting** | Check internet, try: `cloudflared tunnel run sit-charleston-subject-disclaimer` |
+| **Frontend not loading** | Clear browser cache: `Ctrl+Shift+Delete` |
+| **WhatsApp not responding** | Verify tunnel URL is active, check webhook URL in Twilio |
+| **PostgreSQL connection error** | Verify PostgreSQL service is running |
+
+## 🛑 Kill Old Processes (If Stuck)
+
+```bash
+# Kill all Node processes
+Get-Process node | Stop-Process -Force
+
+# Kill all cloudflared processes
+Get-Process cloudflared | Stop-Process -Force
+
+# Verify killed
+Get-Process node, cloudflared -ErrorAction SilentlyContinue
+```
+
+## 📱 WhatsApp Specific Setup
+
+After restarting, **WhatsApp needs:**
+
+```
+1. Backend running ✅ (port 5000)
+2. Tunnel active ✅ (cloudflared)
+3. Tunnel URL in Twilio webhook ✅
+4. Citizen WhatsApp number registered in app ✅
+```
+
+**Test WhatsApp immediately:**
+```bash
+# Check tunnel is routing traffic
+curl -X POST https://sit-charleston-subject-disclaimer.trycloudflare.com/api/whatsapp/webhook \
+  -d "From=whatsapp:%2B919628993700&Body=Test&NumMedia=0"
+
+# Should get: 200 OK with XML message
+```
+
+## 🎯 Startup Order is CRITICAL
+
+```
+1️⃣ Backend FIRST (needs time to initialize database)
+   ↓ Wait for: "Server running on port 5000"
+   
+2️⃣ Tunnel SECOND (connects backend to internet for WhatsApp)
+   ↓ Wait for: "Tunnel running on https://..."
+   
+3️⃣ Frontend THIRD (can connect to running backend)
+   ↓ Should show: "Local: http://localhost:5173"
+```
+
+**Don't skip steps or change order!**
+
+## 📊 Health Dashboard
+
+Create quick monitoring terminal:
+
+```bash
+# Run this to check all services
+while ($true) {
+    Clear-Host
+    Write-Host "=== Service Status ===" -ForegroundColor Green
+    
+    try {
+        $backend = (Invoke-WebRequest -UseBasicParsing -Uri "http://localhost:5000/api/health").StatusCode
+        Write-Host "✅ Backend: Running (Port 5000)" -ForegroundColor Green
+    } catch {
+        Write-Host "❌ Backend: Not responding" -ForegroundColor Red
+    }
+    
+    try {
+        $frontend = (Invoke-WebRequest -UseBasicParsing -Uri "http://localhost:5173").StatusCode
+        Write-Host "✅ Frontend: Running (Port 5173)" -ForegroundColor Green
+    } catch {
+        Write-Host "❌ Frontend: Not responding" -ForegroundColor Red
+    }
+    
+    Write-Host "Check tunnel terminal for status" -ForegroundColor Yellow
+    
+    Start-Sleep -Seconds 5
+}
+```
+
+## 🎉 Ready Signal
+
+You know everything is working when:
+
+```
+✅ Backend console: "Server running on port 5000"
+✅ Tunnel console: "Tunnel running on https://sit-charleston-subject-disclaimer.trycloudflare.com"
+✅ Frontend console: "Local: http://localhost:5173/"
+✅ App loads in browser: http://localhost:5173
+✅ WhatsApp webhook responds: HTTP 200
+```
+
+## 💡 Pro Tips
+
+1. **Minimize tunnels terminal** - Keep it visible so you can see tunnel status
+2. **Monitor backend logs** - Watch for errors in real-time
+3. **Keep one terminal open for testing** - Use curl commands to verify
+4. **Save tunnel URL** - You need it for Twilio: `https://sit-charleston-subject-disclaimer.trycloudflare.com`
+
+---
+
+**Startup Time**: ~10-15 seconds total ⏱️
+
+Now restart your desktop and follow this guide! 🚀

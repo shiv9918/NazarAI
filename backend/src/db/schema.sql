@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS whatsapp_sessions (
   pending_lat DOUBLE PRECISION,
   pending_lng DOUBLE PRECISION,
   pending_media_url TEXT,
+  flow_state TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (citizen_id, from_phone)
@@ -114,12 +115,46 @@ ADD COLUMN IF NOT EXISTS is_emergency BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE reports
 ADD COLUMN IF NOT EXISTS resolution_notes TEXT;
 
+ALTER TABLE reports
+ADD COLUMN IF NOT EXISTS resolved_by_officer TEXT;
+
+ALTER TABLE reports
+ADD COLUMN IF NOT EXISTS resolution_time_taken_hours INTEGER;
+
+ALTER TABLE reports
+ADD COLUMN IF NOT EXISTS citizen_rating TEXT;
+
+ALTER TABLE reports
+ADD COLUMN IF NOT EXISTS citizen_feedback TEXT;
+
+ALTER TABLE reports
+ADD COLUMN IF NOT EXISTS reopen_votes INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE reports
+ADD COLUMN IF NOT EXISTS is_reopened BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE whatsapp_sessions
+ADD COLUMN IF NOT EXISTS flow_state TEXT;
+
+CREATE TABLE IF NOT EXISTS whatsapp_feedback_requests (
+  report_id UUID PRIMARY KEY REFERENCES reports(id) ON DELETE CASCADE,
+  citizen_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  to_phone TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  reminder_sent BOOLEAN NOT NULL DEFAULT FALSE,
+  due_at TIMESTAMPTZ NOT NULL,
+  responded_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_lower ON users ((LOWER(email)));
 CREATE INDEX IF NOT EXISTS reports_reported_at_desc_idx ON reports (reported_at DESC);
 CREATE INDEX IF NOT EXISTS reports_department_idx ON reports (department);
 CREATE INDEX IF NOT EXISTS reports_citizen_id_idx ON reports (citizen_id);
 CREATE INDEX IF NOT EXISTS reports_status_idx ON reports (status);
 CREATE INDEX IF NOT EXISTS whatsapp_sessions_updated_at_idx ON whatsapp_sessions (updated_at DESC);
+CREATE INDEX IF NOT EXISTS whatsapp_feedback_due_at_idx ON whatsapp_feedback_requests (due_at ASC);
 
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
@@ -147,5 +182,12 @@ DROP TRIGGER IF EXISTS whatsapp_sessions_set_updated_at ON whatsapp_sessions;
 
 CREATE TRIGGER whatsapp_sessions_set_updated_at
 BEFORE UPDATE ON whatsapp_sessions
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS whatsapp_feedback_requests_set_updated_at ON whatsapp_feedback_requests;
+
+CREATE TRIGGER whatsapp_feedback_requests_set_updated_at
+BEFORE UPDATE ON whatsapp_feedback_requests
 FOR EACH ROW
 EXECUTE FUNCTION set_updated_at();

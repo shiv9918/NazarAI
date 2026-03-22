@@ -75,7 +75,7 @@ export default function ReportIssue() {
         reader.onloadend = async () => {
           const base64 = reader.result as string;
           setImage(base64);
-          // Use a local data URL to avoid Firebase Storage CORS issues during submission.
+          // Use a local data URL during submission.
           setUploadedImageUrl(base64);
           setIsAnalyzing(true);
           setStep(2); // Move to AI Detection step immediately to show loading
