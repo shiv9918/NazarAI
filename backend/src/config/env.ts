@@ -3,7 +3,12 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const DEFAULT_DATABASE_NAME = 'nazarai';
-const DEFAULT_CORS_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+const DEFAULT_CORS_ORIGINS = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
 
 function normalizeDatabaseUrl(rawValue: string | undefined) {
   if (!rawValue) {
@@ -42,4 +47,8 @@ export const env = {
   jwtSecret: process.env.JWT_SECRET || 'change-me-in-production',
   databaseUrl: normalizeDatabaseUrl(process.env.DATABASE_URL),
   corsOrigins: normalizeCorsOrigins(process.env.CORS_ORIGINS),
+  geminiApiKey: process.env.GEMINI_API_KEY,
+  twilioAccountSid: process.env.TWILIO_ACCOUNT_SID,
+  twilioAuthToken: process.env.TWILIO_AUTH_TOKEN,
+  twilioWhatsappNumber: process.env.TWILIO_WHATSAPP_NUMBER,
 };

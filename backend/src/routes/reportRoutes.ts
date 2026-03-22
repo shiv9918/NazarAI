@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { pool } from '../config/db';
 import { requireAuth } from '../middleware/auth';
 import { UserRole } from '../types/auth';
+import { assignDepartment, normalizeDepartment, validDepartments } from '../utils/reportAssignment';
+import { sendTwilioWhatsAppMessage } from '../services/twilioWhatsapp';
 
 type DbUser = {
   id: string;
@@ -19,6 +21,16 @@ type DbReport = {
   citizen_id: string;
   status: 'reported' | 'in_progress' | 'resolved';
   proof_image_url: string | null;
+};
+
+type ReportWithCitizenPhone = {
+  id: string;
+  department: string;
+  type: string;
+  location: string;
+  status: 'reported' | 'in_progress' | 'resolved';
+  proof_image_url: string | null;
+  citizen_phone: string | null;
 };
 
 type LeaderboardRow = {
@@ -59,31 +71,6 @@ const updateReportSchema = z.object({
   isEmergency: z.boolean().optional(),
 });
 
-const departmentByType: Record<string, string> = {
-  garbage: 'sanitation',
-  garbage_overflow: 'sanitation',
-  illegal_dump: 'sanitation',
-  dump: 'sanitation',
-  pothole: 'roads',
-  road: 'roads',
-  broken_streetlight: 'electrical',
-  streetlight: 'electrical',
-  electrical: 'electrical',
-  water: 'water',
-  water_leakage: 'water',
-  leakage: 'water',
-};
-
-const validDepartments = new Set(['sanitation', 'roads', 'electrical', 'water', 'administration']);
-
-function normalizeDepartment(value?: string | null) {
-  if (!value) return null;
-  const normalized = value.toLowerCase().trim();
-  if (normalized === 'road') return 'roads';
-  if (normalized === 'electric') return 'electrical';
-  if (normalized === 'admin') return 'administration';
-  return normalized;
-}
 
 const selectReportProjection = `
   id,
@@ -115,21 +102,50 @@ function isValidProofImage(value: string) {
   return trimmed.startsWith('data:image/') || /^https?:\/\//i.test(trimmed);
 }
 
-function assignDepartment(issueType: string, requestedDepartment?: string | null) {
-  const normalizedType = issueType.toLowerCase().trim().replace(/\s+/g, '_');
-  if (departmentByType[normalizedType]) {
-    return departmentByType[normalizedType];
+function normalizePhone(raw: string) {
+  return raw.replace(/[^\d+]/g, '').trim();
+}
+
+async function sendResolvedWhatsappNotification(reportId: string) {
+  const result = await pool.query<ReportWithCitizenPhone>(
+    `SELECT
+      r.id,
+      r.department,
+      r.type,
+      r.location,
+      r.status,
+      r.proof_image_url,
+      u.phone AS citizen_phone
+     FROM reports r
+     JOIN users u ON u.id = r.citizen_id
+     WHERE r.id = $1
+     LIMIT 1`,
+    [reportId]
+  );
+
+  const report = result.rows[0];
+  if (!report || report.status !== 'resolved' || !report.citizen_phone) {
+    return;
   }
 
-  if (normalizedType.includes('dump') || normalizedType.includes('garbage')) return 'sanitation';
-  if (normalizedType.includes('pothole') || normalizedType.includes('road')) return 'roads';
-  if (normalizedType.includes('light') || normalizedType.includes('electric')) return 'electrical';
-  if (normalizedType.includes('water') || normalizedType.includes('leak')) return 'water';
+  const to = report.citizen_phone.startsWith('whatsapp:')
+    ? report.citizen_phone
+    : (() => {
+      const normalized = normalizePhone(report.citizen_phone);
+      const withPlus = normalized.startsWith('+') ? normalized : `+${normalized}`;
+      return `whatsapp:${withPlus}`;
+    })();
 
-  const fallback = normalizeDepartment(requestedDepartment) || '';
-  if (validDepartments.has(fallback)) return fallback;
+  const message = `Update from Nazar AI: Your complaint ${report.id} has been resolved by ${report.department}. Issue: ${report.type}. Location: ${report.location}.`;
+  const mediaUrl = report.proof_image_url && /^https?:\/\//i.test(report.proof_image_url)
+    ? report.proof_image_url
+    : null;
 
-  return 'administration';
+  await sendTwilioWhatsAppMessage({
+    to,
+    message: mediaUrl ? `${message} Attached is the department proof image.` : `${message} Proof image is available in app.`,
+    mediaUrl,
+  });
 }
 
 async function getCurrentUser(userId: string) {
@@ -465,6 +481,10 @@ router.patch('/:id', async (req, res) => {
     ]
   );
 
+  if (existingReport.status !== 'resolved' && updated.rows[0]?.status === 'resolved') {
+    await sendResolvedWhatsappNotification(req.params.id);
+  }
+
   return res.json({ report: updated.rows[0] });
 });
 
@@ -525,6 +545,10 @@ router.patch('/:id/status', async (req, res) => {
      RETURNING ${selectReportProjection}`,
     [parsed.data.status, parsed.data.proofImageUrl || null, req.params.id]
   );
+
+  if (report.status !== 'resolved' && updated.rows[0]?.status === 'resolved') {
+    await sendResolvedWhatsappNotification(req.params.id);
+  }
 
   return res.json({ report: updated.rows[0] });
 });

@@ -10,6 +10,14 @@ interface UserProfile {
   avatar: string;
   points?: number;
   department?: string;
+  phone?: string;
+  location?: string;
+  bio?: string;
+  notifyIssueUpdates?: boolean;
+  notifyNewRewards?: boolean;
+  notifyCityAlerts?: boolean;
+  preferredTheme?: 'light' | 'dark';
+  preferredLanguage?: 'en' | 'hi';
   uid: string;
 }
 

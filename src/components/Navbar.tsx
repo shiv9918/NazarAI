@@ -40,11 +40,13 @@ export default function Navbar() {
       ? '/dept-dashboard'
       : '/dashboard';
 
+  const brandRedirectPath = isAuthenticated ? dashboardPath : '/';
+
   return (
     <nav className="sticky top-0 z-50 border-b border-slate-200 bg-white/80 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/80">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
-          <Link to="/" className="flex items-center gap-2">
+          <Link to={brandRedirectPath} className="flex items-center gap-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-200">
               <Eye size={24} />
             </div>
