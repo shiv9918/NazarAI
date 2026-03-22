@@ -1,6 +1,7 @@
 import { motion, useMotionValue, useTransform, animate } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { IndianRupee } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface CostCounterProps {
   initialValue?: number;
@@ -8,7 +9,8 @@ interface CostCounterProps {
   label?: string;
 }
 
-export default function CostCounter({ initialValue = 1245210, className = "", label = "Money Saved Today" }: CostCounterProps) {
+export default function CostCounter({ initialValue = 1245210, className = "", label }: CostCounterProps) {
+  const { t } = useTranslation();
   const count = useMotionValue(0);
   const rounded = useTransform(count, (latest) => Math.round(latest).toLocaleString());
   const [displayValue, setDisplayValue] = useState("0");
@@ -28,7 +30,7 @@ export default function CostCounter({ initialValue = 1245210, className = "", la
         <IndianRupee size={32} />
         <motion.span>{displayValue}</motion.span>
       </div>
-      <div className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-400">{label}</div>
+      <div className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-400">{label || t('costCounter.label')}</div>
     </div>
   );
 }

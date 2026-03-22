@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 
 interface BeforeAfterProps {
   beforeUrl: string;
@@ -11,9 +12,10 @@ interface BeforeAfterProps {
 export default function BeforeAfter({ 
   beforeUrl, 
   afterUrl, 
-  beforeLabel = "Before (Reported)", 
-  afterLabel = "After (Resolved)" 
+  beforeLabel, 
+  afterLabel 
 }: BeforeAfterProps) {
+  const { t } = useTranslation();
   const [sliderPos, setSliderPos] = useState(50);
 
   const handleMove = (e: React.MouseEvent | React.TouchEvent) => {
@@ -54,10 +56,10 @@ export default function BeforeAfter({
 
       {/* Labels */}
       <div className="absolute bottom-4 left-4 z-20 rounded-lg bg-black/40 backdrop-blur-md px-3 py-1 text-[10px] font-bold text-white uppercase tracking-wider">
-        {beforeLabel}
+        {beforeLabel || t('beforeAfter.beforeLabel')}
       </div>
       <div className="absolute bottom-4 right-4 z-20 rounded-lg bg-black/40 backdrop-blur-md px-3 py-1 text-[10px] font-bold text-white uppercase tracking-wider">
-        {afterLabel}
+        {afterLabel || t('beforeAfter.afterLabel')}
       </div>
     </div>
   );

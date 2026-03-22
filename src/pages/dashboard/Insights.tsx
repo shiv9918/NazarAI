@@ -363,89 +363,6 @@ export default function Insights() {
         </motion.div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 rounded-[2.5rem] bg-white dark:bg-slate-900 p-10 shadow-sm border border-slate-100 dark:border-slate-800">
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-xl font-bold text-slate-900 dark:text-white">Issue Volume Trends (Last 7 Days)</h3>
-            <div className="flex gap-3">
-              <span className="flex items-center gap-1 text-xs font-bold text-blue-600"><div className="h-2 w-2 rounded-full bg-blue-600" /> Reported</span>
-              <span className="flex items-center gap-1 text-xs font-bold text-emerald-600"><div className="h-2 w-2 rounded-full bg-emerald-600" /> Resolved</span>
-            </div>
-          </div>
-          <div className="h-80 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trendData}>
-                <defs>
-                  <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#1e293b' : '#f1f5f9'} />
-                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 12 }} allowDecimals={false} />
-                <Tooltip
-                  contentStyle={{
-                    borderRadius: '16px',
-                    border: 'none',
-                    boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)',
-                    backgroundColor: isDark ? '#0f172a' : '#ffffff',
-                    color: isDark ? '#ffffff' : '#000000',
-                    padding: '10px 14px',
-                  }}
-                  itemStyle={{ fontWeight: 'bold' }}
-                />
-                <Area type="monotone" dataKey="count" name="Reported" stroke="#2563eb" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" />
-                <Area type="monotone" dataKey="resolved" name="Resolved" stroke="#10b981" strokeWidth={3} fillOpacity={0} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="rounded-[2.5rem] bg-white dark:bg-slate-900 p-10 shadow-sm border border-slate-100 dark:border-slate-800">
-          <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-8">Issue Categories</h3>
-          {issueData.length === 0 ? (
-            <div className="h-64 flex items-center justify-center text-sm font-bold text-slate-500 dark:text-slate-400">
-              {loading ? t('loading') : 'No issue data in database.'}
-            </div>
-          ) : (
-            <>
-              <div className="h-64 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={issueData} cx="50%" cy="50%" innerRadius={68} outerRadius={92} paddingAngle={6} dataKey="value">
-                      {issueData.map((entry, index) => (
-                        <Cell key={`cell-${entry.name}`} fill={PIE_COLORS[index % PIE_COLORS.length]} cornerRadius={4} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        borderRadius: '16px',
-                        border: 'none',
-                        boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)',
-                        backgroundColor: isDark ? '#0f172a' : '#ffffff',
-                        color: isDark ? '#ffffff' : '#000000',
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="mt-8 space-y-3">
-                {issueData.map((item, i) => (
-                  <div key={item.name} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-3">
-                      <div className="h-3 w-3 rounded-full" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
-                      <span className="text-slate-600 dark:text-slate-400 font-bold">{item.name}</span>
-                    </div>
-                    <span className="font-black text-slate-900 dark:text-white">{item.value}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
       <div className="space-y-8">
         <div className="flex items-center justify-between">
           <h3 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Department Performance</h3>
@@ -547,6 +464,89 @@ export default function Insights() {
               </motion.div>
             );
           })}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 rounded-[2.5rem] bg-white dark:bg-slate-900 p-10 shadow-sm border border-slate-100 dark:border-slate-800">
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-8">Issue Categories</h3>
+          {issueData.length === 0 ? (
+            <div className="h-64 flex items-center justify-center text-sm font-bold text-slate-500 dark:text-slate-400">
+              {loading ? t('loading') : 'No issue data in database.'}
+            </div>
+          ) : (
+            <>
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={issueData} cx="50%" cy="50%" innerRadius={68} outerRadius={92} paddingAngle={6} dataKey="value">
+                      {issueData.map((entry, index) => (
+                        <Cell key={`cell-${entry.name}`} fill={PIE_COLORS[index % PIE_COLORS.length]} cornerRadius={4} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: '16px',
+                        border: 'none',
+                        boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)',
+                        backgroundColor: isDark ? '#0f172a' : '#ffffff',
+                        color: isDark ? '#ffffff' : '#000000',
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-8 space-y-3">
+                {issueData.map((item, i) => (
+                  <div key={item.name} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="h-3 w-3 rounded-full" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                      <span className="text-slate-600 dark:text-slate-400 font-bold">{item.name}</span>
+                    </div>
+                    <span className="font-black text-slate-900 dark:text-white">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="rounded-[2.5rem] bg-white dark:bg-slate-900 p-10 shadow-sm border border-slate-100 dark:border-slate-800">
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="text-xl font-bold text-slate-900 dark:text-white">Issue Volume Trends (Last 7 Days)</h3>
+            <div className="flex gap-3">
+              <span className="flex items-center gap-1 text-xs font-bold text-blue-600"><div className="h-2 w-2 rounded-full bg-blue-600" /> Reported</span>
+              <span className="flex items-center gap-1 text-xs font-bold text-emerald-600"><div className="h-2 w-2 rounded-full bg-emerald-600" /> Resolved</span>
+            </div>
+          </div>
+          <div className="h-80 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={trendData}>
+                <defs>
+                  <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#1e293b' : '#f1f5f9'} />
+                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 12 }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 12 }} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: '16px',
+                    border: 'none',
+                    boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)',
+                    backgroundColor: isDark ? '#0f172a' : '#ffffff',
+                    color: isDark ? '#ffffff' : '#000000',
+                    padding: '10px 14px',
+                  }}
+                  itemStyle={{ fontWeight: 'bold' }}
+                />
+                <Area type="monotone" dataKey="count" name="Reported" stroke="#2563eb" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" />
+                <Area type="monotone" dataKey="resolved" name="Resolved" stroke="#10b981" strokeWidth={3} fillOpacity={0} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
     </div>

@@ -451,70 +451,8 @@ export default function DashboardHome() {
       </div>
 
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="mb-5 flex items-center gap-2 text-lg font-black text-slate-900 dark:text-white">
-          <Building2 size={20} /> Department Performance
-        </div>
-        <div className="space-y-4">
-          {departmentPerformance.map((item) => (
-            <div key={item.department} className="rounded-2xl border border-slate-100 p-4 dark:border-slate-800">
-              <div className="mb-2 flex items-center justify-between">
-                <div className="text-sm font-bold uppercase tracking-wide text-slate-800 dark:text-slate-200">
-                  {item.department}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-sm font-black ${item.color.text}`}>{item.percent}%</span>
-                  {item.escalated && (
-                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black uppercase text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
-                      escalated
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-                <div className={`h-full ${item.color.bar}`} style={{ width: `${Math.max(3, item.percent)}%` }} />
-              </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                Resolved {item.resolved} / Assigned {item.assigned}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <h3 className="mb-4 text-lg font-black text-slate-900 dark:text-white">Reports (Last 7 Days)</h3>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={reportsPerDay}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" opacity={0.3} />
-                <XAxis dataKey="day" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Line type="monotone" dataKey="reports" stroke="#2563eb" strokeWidth={3} dot={{ r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <h3 className="mb-4 text-lg font-black text-slate-900 dark:text-white">Issue Type Distribution</h3>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={issueTypeData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" opacity={0.3} />
-                <XAxis dataKey="issueType" interval={0} angle={-20} textAnchor="end" height={60} />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#0f766e" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <div className="xl:col-span-2 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="mb-4 flex flex-wrap items-center gap-3">
+        <h3 className="mb-4 text-lg font-black text-slate-900 dark:text-white">Issue Status</h3>
+        <div className="mb-4 flex flex-wrap items-center gap-3">
             <div className="relative min-w-[220px] flex-1">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
@@ -618,36 +556,96 @@ export default function DashboardHome() {
           </div>
         </div>
 
+      {/* <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <h3 className="mb-4 text-lg font-black text-slate-900 dark:text-white">Live Feed</h3>
-          <div className="space-y-3">
-            {liveFeed.map((report) => (
-              <div key={report.id} className="rounded-2xl border border-slate-100 p-3 dark:border-slate-800">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-black capitalize text-slate-800 dark:text-slate-200">
-                      {report.type.replace(/_/g, ' ')}
-                    </div>
-                    <div className="truncate text-xs text-slate-500 dark:text-slate-400">{report.location}</div>
-                  </div>
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">{formatDateTime(report.reportedAt)}</span>
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                    {report.department}
-                  </span>
-                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-black uppercase text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
-                    {statusLabel(report.status, t)}
-                  </span>
-                </div>
-              </div>
-            ))}
-            {liveFeed.length === 0 && (
-              <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm font-semibold text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                No live feed entries yet.
-              </div>
-            )}
+          <h3 className="mb-4 text-lg font-black text-slate-900 dark:text-white">Reports (Last 7 Days)</h3>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={reportsPerDay}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" opacity={0.3} />
+                <XAxis dataKey="day" />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Line type="monotone" dataKey="reports" stroke="#2563eb" strokeWidth={3} dot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
+        </div>
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <h3 className="mb-4 text-lg font-black text-slate-900 dark:text-white">Issue Type Distribution</h3>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={issueTypeData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" opacity={0.3} />
+                <XAxis dataKey="issueType" interval={0} angle={-20} textAnchor="end" height={60} />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Bar dataKey="count" fill="#0f766e" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div> */}
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <h3 className="mb-4 text-lg font-black text-slate-900 dark:text-white">Reports (Last 7 Days)</h3>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={reportsPerDay}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" opacity={0.3} />
+                <XAxis dataKey="day" />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Line type="monotone" dataKey="reports" stroke="#2563eb" strokeWidth={3} dot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <h3 className="mb-4 text-lg font-black text-slate-900 dark:text-white">Issue Type Distribution</h3>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={issueTypeData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" opacity={0.3} />
+                <XAxis dataKey="issueType" interval={0} angle={-20} textAnchor="end" height={60} />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Bar dataKey="count" fill="#0f766e" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="mb-5 flex items-center gap-2 text-lg font-black text-slate-900 dark:text-white">
+          <Building2 size={20} /> Department Performance
+        </div>
+        <div className="space-y-4">
+          {departmentPerformance.map((item) => (
+            <div key={item.department} className="rounded-2xl border border-slate-100 p-4 dark:border-slate-800">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-sm font-bold uppercase tracking-wide text-slate-800 dark:text-slate-200">
+                  {item.department}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-sm font-black ${item.color.text}`}>{item.percent}%</span>
+                  {item.escalated && (
+                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black uppercase text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
+                      escalated
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                <div className={`h-full ${item.color.bar}`} style={{ width: `${Math.max(3, item.percent)}%` }} />
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                Resolved {item.resolved} / Assigned {item.assigned}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

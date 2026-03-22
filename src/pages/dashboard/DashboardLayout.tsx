@@ -16,7 +16,7 @@ export default function DashboardLayout() {
     ? [{ name: 'Overview', path: basePath, icon: <LayoutDashboard size={20} /> }]
     : [
         { name: 'Overview', path: basePath, icon: <LayoutDashboard size={20} /> },
-        { name: 'Issue Management', path: `${basePath}/issues`, icon: <List size={20} /> },
+        
         { name: 'Performance & Analytics', path: `${basePath}/insights`, icon: <BarChart3 size={20} /> },
       ];
 

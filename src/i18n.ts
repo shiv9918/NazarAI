@@ -263,6 +263,49 @@ const resources = {
         "successTitle": "SOS Reported!",
         "successDesc": "Ward Officer notified via SMS. Expected response within 1 hour.",
         "close": "Close"
+      },
+      "offline": {
+        "title": "You are offline",
+        "description": "Reports will be saved and synced later.",
+        "dismiss": "Dismiss"
+      },
+      "weather": {
+        "alert": "Heavy Rain Alert",
+        "description": "15-16 March. 23 wards at risk of flooding. Pre-deploying sanitation teams.",
+        "dismiss": "Dismiss"
+      },
+      "cost_counter": {
+        "money_saved_today": "Money Saved Today"
+      },
+      "before_after": {
+        "before_label": "Before (Reported)",
+        "after_label": "After (Resolved)"
+      },
+      "citizen_dashboard": {
+        "welcome": "Welcome, {{name}}",
+        "subtitle": "Track your contributions and impact in the city.",
+        "points": "Points",
+        "report_issue_now": "Report an Issue Now",
+        "my_recent_reports": "My Recent Reports",
+        "loading": "Loading...",
+        "no_reports": "You haven't reported any issues yet.",
+        "resolved": "Resolved",
+        "in_progress": "In Progress",
+        "reported": "Reported",
+        "resolution_proof_available": "Resolution proof available in Details",
+        "details": "Details",
+        "your_impact": "Your Impact",
+        "issues_resolved": "Issues Resolved",
+        "avg_resolution": "Avg. Resolution",
+        "total_points": "Total Points",
+        "top_reporter": "You are in the top {{percentage}}% of reporters! 🦁",
+        "start_reporting": "Start reporting issues to earn your spot on the leaderboard"
+      },
+      "citizen_layout": {
+        "dashboard_home": "Dashboard Home",
+        "track_application": "Track My Application",
+        "leaderboard": "Leaderboard",
+        "citizen_portal": "Citizen Portal"
       }
     }
   },
@@ -527,6 +570,49 @@ const resources = {
         "successTitle": "SOS रिपोर्ट किया गया!",
         "successDesc": "वार्ड अधिकारी को SMS के माध्यम से सूचित किया गया। 1 घंटे के भीतर अपेक्षित प्रतिक्रिया।",
         "close": "बंद करें"
+      },
+      "offline": {
+        "title": "आप ऑफलाइन हैं",
+        "description": "रिपोर्ट सहेजी जाएंगी और बाद में सिंक हो जाएंगी।",
+        "dismiss": "खारिज करें"
+      },
+      "weather": {
+        "alert": "भारी बारिश अलर्ट",
+        "description": "15-16 मार्च। 23 वार्ड बाढ़ के जोखिम में हैं। सफाई टीमें पहले से तैनात की जा रही हैं।",
+        "dismiss": "खारिज करें"
+      },
+      "cost_counter": {
+        "money_saved_today": "आज बचाई गई राशि"
+      },
+      "before_after": {
+        "before_label": "पहले (रिपोर्ट किया गया)",
+        "after_label": "बाद (समाधान किया गया)"
+      },
+      "citizen_dashboard": {
+        "welcome": "स्वागत है, {{name}}",
+        "subtitle": "शहर में अपनी योगदान और प्रभाव को ट्रैक करें।",
+        "points": "अंक",
+        "report_issue_now": "अभी समस्या रिपोर्ट करें",
+        "my_recent_reports": "मेरी हाल की रिपोर्ट",
+        "loading": "लोड हो रहा है...",
+        "no_reports": "आपने अभी तक कोई समस्या रिपोर्ट नहीं की है।",
+        "resolved": "समाधान किया गया",
+        "in_progress": "प्रगति पर है",
+        "reported": "रिपोर्ट किया गया",
+        "resolution_proof_available": "विवरण में समाधान प्रमाण उपलब्ध",
+        "details": "विवरण",
+        "your_impact": "आपका प्रभाव",
+        "issues_resolved": "समस्याएं समाधान की गईं",
+        "avg_resolution": "औसत समाधान",
+        "total_points": "कुल अंक",
+        "top_reporter": "आप रिपोर्टर्स के शीर्ष {{percentage}}% में हैं! 🦁",
+        "start_reporting": "लीडरबोर्ड पर अपनी जगह अर्जित करने के लिए समस्याएं रिपोर्ट करना शुरू करें"
+      },
+      "citizen_layout": {
+        "dashboard_home": "डैशबोर्ड होम",
+        "track_application": "मेरा आवेदन ट्रैक करें",
+        "leaderboard": "लीडरबोर्ड",
+        "citizen_portal": "नागरिक पोर्टल"
       }
     }
   }
