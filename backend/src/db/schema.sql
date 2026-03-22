@@ -26,10 +26,42 @@ CREATE TABLE IF NOT EXISTS users (
   department TEXT,
   points INTEGER NOT NULL DEFAULT 0,
   avatar TEXT,
+  phone TEXT,
+  location TEXT,
+  bio TEXT,
+  notify_issue_updates BOOLEAN NOT NULL DEFAULT TRUE,
+  notify_new_rewards BOOLEAN NOT NULL DEFAULT TRUE,
+  notify_city_alerts BOOLEAN NOT NULL DEFAULT TRUE,
+  preferred_theme TEXT,
+  preferred_language TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_login_at TIMESTAMPTZ
 );
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS phone TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS location TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS bio TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS notify_issue_updates BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS notify_new_rewards BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS notify_city_alerts BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS preferred_theme TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS preferred_language TEXT;
 
 CREATE TABLE IF NOT EXISTS reports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -56,6 +88,19 @@ CREATE TABLE IF NOT EXISTS reports (
   ai_description TEXT
 );
 
+CREATE TABLE IF NOT EXISTS whatsapp_sessions (
+  citizen_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  from_phone TEXT NOT NULL,
+  pending_body TEXT,
+  pending_address TEXT,
+  pending_lat DOUBLE PRECISION,
+  pending_lng DOUBLE PRECISION,
+  pending_media_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (citizen_id, from_phone)
+);
+
 -- Backfill columns for existing databases created before proof image support.
 ALTER TABLE reports
 ADD COLUMN IF NOT EXISTS proof_image_url TEXT;
@@ -74,6 +119,7 @@ CREATE INDEX IF NOT EXISTS reports_reported_at_desc_idx ON reports (reported_at 
 CREATE INDEX IF NOT EXISTS reports_department_idx ON reports (department);
 CREATE INDEX IF NOT EXISTS reports_citizen_id_idx ON reports (citizen_id);
 CREATE INDEX IF NOT EXISTS reports_status_idx ON reports (status);
+CREATE INDEX IF NOT EXISTS whatsapp_sessions_updated_at_idx ON whatsapp_sessions (updated_at DESC);
 
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
@@ -94,5 +140,12 @@ DROP TRIGGER IF EXISTS reports_set_updated_at ON reports;
 
 CREATE TRIGGER reports_set_updated_at
 BEFORE UPDATE ON reports
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS whatsapp_sessions_set_updated_at ON whatsapp_sessions;
+
+CREATE TRIGGER whatsapp_sessions_set_updated_at
+BEFORE UPDATE ON whatsapp_sessions
 FOR EACH ROW
 EXECUTE FUNCTION set_updated_at();

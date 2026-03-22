@@ -1,5 +1,5 @@
 {
-  "name": "AI CivicEye",
+  "name": "Nazar AI",
   "description": "AI-powered civic monitoring platform for Delhi using computer vision for automated issue detection and resolution tracking.",
   "requestFramePermissions": [
     "geolocation",

@@ -342,7 +342,7 @@ export default function DashboardHome() {
     setModalForm(null);
   };
 
-  const onProofImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const onProofImageChange = async (event: any) => {
     const file = event.target.files?.[0];
     if (!file || !modalForm) return;
 

@@ -5,6 +5,7 @@ import { pool, testConnection } from './config/db';
 import { runMigrations } from './db/runMigrations';
 import authRoutes from './routes/authRoutes';
 import reportRoutes from './routes/reportRoutes';
+import whatsappRoutes from './routes/whatsappRoutes';
 
 async function startServer() {
   await testConnection();
@@ -25,6 +26,7 @@ async function startServer() {
 
   app.use('/api/auth', authRoutes);
   app.use('/api/reports', reportRoutes);
+  app.use('/api/whatsapp', whatsappRoutes);
 
   app.listen(env.port, '0.0.0.0', () => {
     console.log(`Backend running at http://localhost:${env.port}`);
