@@ -61,7 +61,7 @@ export default function EmergencyButton() {
                       </div>
                       <div>
                         <div className="text-lg font-bold text-slate-900 dark:text-white">{t('emergency.autoTagging')}</div>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Your exact location will be sent to emergency services automatically.</p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('emergency.locationDesc')}</p>
                       </div>
                     </div>
                     

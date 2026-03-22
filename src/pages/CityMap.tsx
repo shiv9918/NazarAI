@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import L from 'leaflet';
 import { Filter, Info, AlertCircle, CheckCircle2, Clock, Zap, MapPin } from 'lucide-react';
 import { getCurrentPosition } from '../utils/location';
-import { useTheme } from '../context/ThemeContext';
 import { db } from '../firebase';
 import { collection, query, onSnapshot, where } from 'firebase/firestore';
 
@@ -33,7 +32,6 @@ export default function CityMap() {
   const [reports, setReports] = useState<any[]>([]);
   const [filter, setFilter] = useState('all');
   const [mapCenter, setMapCenter] = useState<[number, number]>([28.6139, 77.2090]);
-  const { theme } = useTheme();
 
   useEffect(() => {
     let q = query(collection(db, 'reports'));
@@ -122,17 +120,10 @@ export default function CityMap() {
       {/* Map */}
       <MapContainer center={delhiCenter} zoom={12} className="h-full w-full z-0">
         <MapUpdater center={delhiCenter} />
-        {theme === 'dark' ? (
-          <TileLayer
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          />
-        ) : (
-          <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          />
-        )}
+        <TileLayer
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        />
         {reports.map((report) => (
           <Marker 
             key={report.id} 

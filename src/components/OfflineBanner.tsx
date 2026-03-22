@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { WifiOff, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 
 export default function OfflineBanner() {
+  const { t } = useTranslation();
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isVisible, setIsVisible] = useState(true);
 
@@ -33,8 +35,8 @@ export default function OfflineBanner() {
           <div className="flex items-center gap-3">
             <WifiOff size={20} />
             <div>
-              <div className="font-bold text-sm">You are offline</div>
-              <div className="text-xs opacity-80">Reports will be saved and synced later.</div>
+              <div className="font-bold text-sm">{t('offline.title')}</div>
+              <div className="text-xs opacity-80">{t('offline.description')}</div>
             </div>
           </div>
           <button onClick={() => setIsVisible(false)} className="p-1 hover:bg-white/20 rounded-full">

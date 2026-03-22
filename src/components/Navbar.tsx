@@ -1,8 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { useTheme } from '../context/ThemeContext';
-import { Eye, Menu, X, Globe, User, Shield, LogIn, LogOut, ChevronDown, Award, Settings, Sun, Moon } from 'lucide-react';
+import { Eye, Menu, X, Globe, User, Shield, LogIn, LogOut, ChevronDown, Award, Settings } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
@@ -10,7 +9,6 @@ import { useAuth } from '../context/AuthContext';
 export default function Navbar() {
   const { t } = useTranslation();
   const { language, toggleLanguage } = useLanguage();
-  const { theme, toggleTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const { user, logout, isAuthenticated } = useAuth();
@@ -61,14 +59,6 @@ export default function Navbar() {
             >
               <Globe size={14} />
               {language === 'en' ? 'हिं' : 'EN'}
-            </button>
-
-            <button
-              onClick={toggleTheme}
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition-all hover:bg-slate-50 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-900"
-              aria-label="Toggle theme"
-            >
-              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
             </button>
 
             {/* Auth Section */}
@@ -184,14 +174,7 @@ export default function Navbar() {
                   className="flex items-center gap-2 text-base font-medium text-slate-600 dark:text-slate-400"
                 >
                   <Globe size={18} />
-                  {language === 'en' ? 'हिन्दी' : 'English'}
-                </button>
-                <button
-                  onClick={toggleTheme}
-                  className="flex items-center gap-2 text-base font-medium text-slate-600 dark:text-slate-400"
-                >
-                  {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-                  {theme === 'light' ? t('dark_mode') : t('light_mode')}
+                  {language === 'en' ? t('language.hindi') : t('language.english')}
                 </button>
               </div>
 

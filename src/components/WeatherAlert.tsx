@@ -1,8 +1,10 @@
 import { motion } from 'framer-motion';
 import { AlertCircle, CloudRain, Wind, Thermometer } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export default function WeatherAlert() {
+  const { t } = useTranslation();
   const [isVisible, setIsVisible] = useState(true);
 
   if (!isVisible) return null;
@@ -20,14 +22,14 @@ export default function WeatherAlert() {
               <CloudRain size={18} />
             </div>
             <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-              <span className="font-bold">⛈ Heavy Rain Alert:</span> 15-16 March. 23 wards at risk of flooding. Pre-deploying sanitation teams.
+              <span className="font-bold">⛈ {t('weather.alert')}:</span> {t('weather.description')}
             </p>
           </div>
           <button 
             onClick={() => setIsVisible(false)}
             className="text-xs font-bold text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
           >
-            Dismiss
+            {t('weather.dismiss')}
           </button>
         </div>
       </div>
