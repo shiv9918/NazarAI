@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Trophy, Star, Shield, Award, Crown, User } from 'lucide-react';
+import { Trophy, Star, Shield, Award, Crown, User, CheckCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 
@@ -220,6 +220,40 @@ export default function LeaderBoard() {
               );
             })}
           </div>
+
+          <div className="rounded-3xl bg-white p-6 text-slate-900 shadow-lg border border-slate-200 dark:bg-slate-900 dark:border-slate-800">
+            <h3 className="text-lg font-bold mb-4">Your Impact</h3>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
+                  <CheckCircle size={18} />
+                </div>
+                <div>
+                  <div className="font-bold text-xl">{currentUserStats?.resolvedCount ?? 0}</div>
+                  <div className="text-xs text-slate-500">Issues Resolved</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+                  <Award size={18} />
+                </div>
+                <div>
+                  <div className="font-bold text-xl">{currentUserStats?.points ?? 0}</div>
+                  <div className="text-xs text-slate-500">Total Points</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600">
+                  <Star size={18} />
+                </div>
+                <div>
+                  <div className="font-bold text-xl">{currentUserStats?.reportsCount ?? 0}</div>
+                  <div className="text-xs text-slate-500">Total Reports</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
