@@ -19,6 +19,7 @@ export default function DepartmentDashboardHome() {
   const [proofImageFile, setProofImageFile] = useState<File | null>(null);
   const [showProofUpload, setShowProofUpload] = useState(false);
   const [pendingStatusChange, setPendingStatusChange] = useState<string | null>(null);
+  const [resolutionNotes, setResolutionNotes] = useState('');
 
   const fetchIssues = async () => {
     const token = localStorage.getItem(AUTH_TOKEN_KEY);
@@ -110,10 +111,11 @@ export default function DepartmentDashboardHome() {
     setPendingStatusChange(newStatus);
     setProofImage(null);
     setProofImageFile(null);
+    setResolutionNotes('');
     setShowProofUpload(true);
   };
 
-  const handleUpdateStatus = async (newStatus: string, proofImageData: string | null) => {
+  const handleUpdateStatus = async (newStatus: string, proofImageData: string | null, notes?: string) => {
     if (!selectedIssue) return;
     setUpdatingStatus(true);
     try {
@@ -130,7 +132,9 @@ export default function DepartmentDashboardHome() {
         },
         body: JSON.stringify({ 
           status: newStatus,
-          proofImageUrl: proofImageData || null
+          proofImageUrl: proofImageData || null,
+          resolutionNotes: notes || undefined,
+          resolvedByOfficer: user?.name || undefined,
         }),
       });
 
@@ -147,6 +151,7 @@ export default function DepartmentDashboardHome() {
         setProofImageFile(null);
         setShowProofUpload(false);
         setPendingStatusChange(null);
+        setResolutionNotes('');
       }
     } catch (error) {
       console.error("Error updating status:", error);
@@ -440,6 +445,7 @@ export default function DepartmentDashboardHome() {
                   setProofImage(null);
                   setProofImageFile(null);
                   setPendingStatusChange(null);
+                  setResolutionNotes('');
                 }}
                 className="absolute top-6 right-6 p-2 rounded-full bg-white/80 dark:bg-slate-800/80 text-slate-900 dark:text-white hover:bg-white dark:hover:bg-slate-700 transition-colors"
               >
@@ -489,6 +495,20 @@ export default function DepartmentDashboardHome() {
                 </label>
               )}
 
+              <div className="mb-6">
+                <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                  Resolution notes (mandatory)
+                </label>
+                <textarea
+                  value={resolutionNotes}
+                  onChange={(e) => setResolutionNotes(e.target.value)}
+                  rows={4}
+                  placeholder="Describe what was done... (minimum 20 characters)"
+                  className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                />
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Minimum 20 characters required</p>
+              </div>
+
               <div className="flex gap-3">
                 <button
                   onClick={() => {
@@ -496,16 +516,17 @@ export default function DepartmentDashboardHome() {
                     setProofImage(null);
                     setProofImageFile(null);
                     setPendingStatusChange(null);
+                    setResolutionNotes('');
                   }}
                   className="flex-1 py-3 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
-                  disabled={!proofImage || updatingStatus}
+                  disabled={!proofImage || updatingStatus || resolutionNotes.trim().length < 20}
                   onClick={() => {
-                    if (pendingStatusChange && proofImage) {
-                      handleUpdateStatus(pendingStatusChange, proofImage);
+                    if (pendingStatusChange && proofImage && resolutionNotes.trim().length >= 20) {
+                      handleUpdateStatus(pendingStatusChange, proofImage, resolutionNotes.trim());
                     }
                   }}
                   className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 disabled:opacity-50 transition-colors"

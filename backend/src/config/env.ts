@@ -51,4 +51,7 @@ export const env = {
   twilioAccountSid: process.env.TWILIO_ACCOUNT_SID,
   twilioAuthToken: process.env.TWILIO_AUTH_TOKEN,
   twilioWhatsappNumber: process.env.TWILIO_WHATSAPP_NUMBER,
+  openWeatherApiKey: process.env.OPENWEATHER_API_KEY,
+  openWeatherLat: Number(process.env.OPENWEATHER_LAT || 28.6139),
+  openWeatherLon: Number(process.env.OPENWEATHER_LON || 77.209),
 };

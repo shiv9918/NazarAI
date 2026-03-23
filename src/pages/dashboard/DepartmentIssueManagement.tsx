@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, Download, MoreVertical, Eye, CheckCircle, Clock, AlertTriangle, MapPin, Users, X, Calendar, Info, Maximize2, Upload } from 'lucide-react';
+import { Search, Filter, Download, MoreVertical, Eye, CheckCircle, Clock, AlertTriangle, MapPin, Users, X, Calendar, Info, Maximize2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
+import ResolutionModal from '../../components/ResolutionModal';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 const AUTH_TOKEN_KEY = 'nazarai_auth_token';
@@ -15,38 +16,7 @@ export default function DepartmentIssueManagement() {
   const [selectedIssue, setSelectedIssue] = useState<any>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showFullImage, setShowFullImage] = useState(false);
-  const [proofImage, setProofImage] = useState<string | null>(null);
-  const [showProofUpload, setShowProofUpload] = useState(false);
-  const [pendingStatusChange, setPendingStatusChange] = useState<string | null>(null);
-
-  const fetchIssues = async () => {
-    const token = localStorage.getItem(AUTH_TOKEN_KEY);
-    if (!token) {
-      setIssues([]);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/reports`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data?.message || 'Failed to fetch department reports.');
-      }
-
-      const reportsData = Array.isArray(data?.reports) ? data.reports : [];
-      setIssues(reportsData);
-    } catch (error) {
-      console.error('Error fetching reports:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [showResolutionModal, setShowResolutionModal] = useState(false);
 
   const convertImageToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -81,37 +51,58 @@ export default function DepartmentIssueManagement() {
     });
   };
 
-  const handleProofImageChange = async (e: any) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        alert('Please upload an image smaller than 10MB.');
-        return;
+  const fetchIssues = async () => {
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    if (!token) {
+      setIssues([]);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/reports`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to fetch department reports.');
       }
 
-      try {
-        const base64 = await convertImageToBase64(file);
-        setProofImage(base64);
-      } catch (error) {
-        console.error('Error processing proof image:', error);
-        alert('Could not process the selected image. Please try another file.');
-      }
+      const reportsData = Array.isArray(data?.reports) ? data.reports : [];
+      setIssues(reportsData);
+    } catch (error) {
+      console.error('Error fetching reports:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleStatusChangeClick = (newStatus: string) => {
-    if (newStatus !== 'resolved') {
-      handleUpdateStatus(newStatus, null);
+    if (!selectedIssue) {
       return;
     }
 
-    setPendingStatusChange(newStatus);
-    setProofImage(null);
-    setShowProofUpload(true);
+    if (newStatus !== 'resolved') {
+      void handleUpdateStatus({
+        issueId: selectedIssue.id,
+        newStatus,
+      });
+      return;
+    }
+
+    setShowResolutionModal(true);
   };
 
-  const handleUpdateStatus = async (newStatus: string, proofImageData: string | null) => {
-    if (!selectedIssue) return;
+  const handleUpdateStatus = async (params: {
+    issueId: string;
+    newStatus: string;
+    proofImageUrl?: string | null;
+    resolutionNotes?: string;
+    resolvedByOfficer?: string;
+  }) => {
     setUpdatingStatus(true);
     try {
       const token = localStorage.getItem(AUTH_TOKEN_KEY);
@@ -119,15 +110,17 @@ export default function DepartmentIssueManagement() {
         throw new Error('Session expired. Please login again.');
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/reports/${selectedIssue.id}/status`, {
+      const response = await fetch(`${API_BASE_URL}/api/reports/${params.issueId}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ 
-          status: newStatus,
-          proofImageUrl: proofImageData || null
+        body: JSON.stringify({
+          status: params.newStatus,
+          proofImageUrl: params.proofImageUrl || null,
+          resolutionNotes: params.resolutionNotes,
+          resolvedByOfficer: params.resolvedByOfficer,
         }),
       });
 
@@ -138,15 +131,45 @@ export default function DepartmentIssueManagement() {
 
       const updatedReport = data?.report;
       if (updatedReport) {
-        setSelectedIssue(updatedReport);
+        setSelectedIssue((prev: any) => (prev?.id === updatedReport.id ? updatedReport : prev));
         setIssues((prev) => prev.map((issue) => issue.id === updatedReport.id ? updatedReport : issue));
-        setProofImage(null);
-        setShowProofUpload(false);
-        setPendingStatusChange(null);
       }
     } catch (error) {
       console.error("Error updating status:", error);
       alert(error instanceof Error ? error.message : 'Failed to update status');
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
+  const handleResolvedSubmit = async (data: {
+    proofFile: File;
+    resolutionNotes: string;
+    officerName: string;
+    resolutionTimeTakenHours: number;
+  }) => {
+    if (!selectedIssue) return;
+
+    try {
+      setUpdatingStatus(true);
+
+      const proofImageData = await convertImageToBase64(data.proofFile);
+
+      await handleUpdateStatus({
+        issueId: selectedIssue.id,
+        newStatus: 'resolved',
+        proofImageUrl: proofImageData,
+        resolutionNotes: data.resolutionNotes,
+        resolvedByOfficer: data.officerName,
+      });
+
+      alert('Marked as resolved! Citizen has been notified on WhatsApp.');
+      setShowResolutionModal(false);
+      setSelectedIssue(null);
+      await fetchIssues();
+    } catch (error) {
+      console.error('Error while resolving issue:', error);
+      alert(error instanceof Error ? error.message : 'Failed to resolve issue.');
     } finally {
       setUpdatingStatus(false);
     }
@@ -442,94 +465,20 @@ export default function DepartmentIssueManagement() {
         )}
       </AnimatePresence>
 
-      {/* Proof Image Upload Modal */}
-      <AnimatePresence>
-        {showProofUpload && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-800 p-8"
-            >
-              <button
-                onClick={() => {
-                  setShowProofUpload(false);
-                  setProofImage(null);
-                  setPendingStatusChange(null);
-                }}
-                className="absolute top-6 right-6 p-2 rounded-full bg-white/80 dark:bg-slate-800/80 text-slate-900 dark:text-white hover:bg-white dark:hover:bg-slate-700 transition-colors"
-              >
-                <X size={20} />
-              </button>
-
-              <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-2">
-                Upload Proof Image
-              </h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-                Please upload proof image before marking this issue as resolved. This will be visible to the citizen.
-              </p>
-
-              {/* Image Preview */}
-              {proofImage ? (
-                <div className="mb-6 relative h-64 w-full rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800">
-                  <img src={proofImage} alt="Proof preview" className="h-full w-full object-cover" />
-                  <button
-                    onClick={() => setProofImage(null)}
-                    className="absolute top-2 right-2 p-2 rounded-lg bg-red-500 text-white hover:bg-red-600"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-              ) : (
-                <label className="mb-6 block">
-                  <div className="relative h-48 w-full rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                    <div className="text-center">
-                      <Upload className="mx-auto mb-3 text-slate-400" size={32} />
-                      <p className="text-sm font-bold text-slate-600 dark:text-slate-400">
-                        Click or drag image
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-500">
-                        PNG, JPEG up to 5MB
-                      </p>
-                    </div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleProofImageChange}
-                      className="absolute inset-0 opacity-0 cursor-pointer"
-                    />
-                  </div>
-                </label>
-              )}
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowProofUpload(false);
-                    setProofImage(null);
-                    setPendingStatusChange(null);
-                  }}
-                  className="flex-1 py-3 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  disabled={!proofImage || updatingStatus}
-                  onClick={() => {
-                    if (pendingStatusChange && proofImage) {
-                      handleUpdateStatus(pendingStatusChange, proofImage);
-                    }
-                  }}
-                  className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 disabled:opacity-50 transition-colors"
-                >
-                  {updatingStatus ? 'Uploading...' : 'Resolve & Upload'}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <ResolutionModal
+        isOpen={showResolutionModal}
+        complaint={selectedIssue ? {
+          id: selectedIssue.id,
+          type: selectedIssue.type,
+          imageUrl: selectedIssue.imageUrl,
+          location: selectedIssue.location,
+          createdAt: selectedIssue.createdAt,
+          reportedAt: selectedIssue.reportedAt,
+        } : null}
+        onClose={() => setShowResolutionModal(false)}
+        onResolved={handleResolvedSubmit}
+        isSubmitting={updatingStatus}
+      />
     </div>
   );
 }

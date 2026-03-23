@@ -52,11 +52,18 @@ export default function App() {
                           <Route path="/report" element={<ReportIssue />} />
                           <Route path="/track" element={<TrackIssue />} />
                           <Route path="/leaderboard" element={<LeaderBoard />} />
-                          <Route path="/settings" element={<Settings />} />
                         </Route>
 
                         <Route path="/map" element={<CityMap />} />
                         <Route path="/about" element={<About />} />
+                        <Route
+                          path="/settings"
+                          element={(
+                            <ProtectedRoute allowedRoles={['citizen', 'municipal', 'department', 'admin']}>
+                              <Settings />
+                            </ProtectedRoute>
+                          )}
+                        />
                         <Route
                           path="/dashboard"
                           element={(
