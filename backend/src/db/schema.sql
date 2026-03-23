@@ -148,6 +148,29 @@ CREATE TABLE IF NOT EXISTS whatsapp_feedback_requests (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS weather_department_alerts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  severity TEXT NOT NULL,
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  rainfall_48h_mm DOUBLE PRECISION NOT NULL,
+  source TEXT NOT NULL DEFAULT 'OpenWeatherMap',
+  target_departments TEXT[] NOT NULL,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS weather_department_notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  alert_id UUID NOT NULL REFERENCES weather_department_alerts(id) ON DELETE CASCADE,
+  department TEXT NOT NULL,
+  delivered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  acknowledged_at TIMESTAMPTZ,
+  UNIQUE (alert_id, department)
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_lower ON users ((LOWER(email)));
 CREATE INDEX IF NOT EXISTS reports_reported_at_desc_idx ON reports (reported_at DESC);
 CREATE INDEX IF NOT EXISTS reports_department_idx ON reports (department);
@@ -155,6 +178,9 @@ CREATE INDEX IF NOT EXISTS reports_citizen_id_idx ON reports (citizen_id);
 CREATE INDEX IF NOT EXISTS reports_status_idx ON reports (status);
 CREATE INDEX IF NOT EXISTS whatsapp_sessions_updated_at_idx ON whatsapp_sessions (updated_at DESC);
 CREATE INDEX IF NOT EXISTS whatsapp_feedback_due_at_idx ON whatsapp_feedback_requests (due_at ASC);
+CREATE INDEX IF NOT EXISTS weather_department_alerts_created_at_idx ON weather_department_alerts (created_at DESC);
+CREATE INDEX IF NOT EXISTS weather_department_alerts_expires_at_idx ON weather_department_alerts (expires_at DESC);
+CREATE INDEX IF NOT EXISTS weather_department_notifications_department_idx ON weather_department_notifications (department, delivered_at DESC);
 
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$

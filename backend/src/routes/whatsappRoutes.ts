@@ -82,14 +82,24 @@ function getTwilioAuthHeader() {
 
 async function resolveCitizenByPhone(fromRaw: string) {
   const incoming = normalizePhone(stripWhatsappPrefix(fromRaw));
+  const incomingDigits = incoming.replace(/\D/g, '');
+  const incomingLast10 = incomingDigits.slice(-10);
 
   const result = await pool.query<DbCitizen>(
     `SELECT id, first_name, last_name, email, role, phone
      FROM users
      WHERE role = 'citizen'
-       AND regexp_replace(COALESCE(phone, ''), '[^0-9+]', '', 'g') = $1
+       AND (
+         regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g') = $1
+         OR RIGHT(regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g'), 10) = $2
+       )
+     ORDER BY
+       CASE
+         WHEN regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g') = $1 THEN 0
+         ELSE 1
+       END
      LIMIT 1`,
-    [incoming]
+    [incomingDigits, incomingLast10]
   );
 
   return result.rows[0] || null;

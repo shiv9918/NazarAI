@@ -6,6 +6,7 @@ import { runMigrations } from './db/runMigrations';
 import authRoutes from './routes/authRoutes';
 import reportRoutes from './routes/reportRoutes';
 import whatsappRoutes from './routes/whatsappRoutes';
+import weatherRoutes from './routes/weatherRoutes';
 import { sendPendingFeedbackReminders } from './services/whatsappResolutionFlow';
 
 let feedbackReminderInterval: NodeJS.Timeout | null = null;
@@ -30,6 +31,7 @@ async function startServer() {
   app.use('/api/auth', authRoutes);
   app.use('/api/reports', reportRoutes);
   app.use('/api/whatsapp', whatsappRoutes);
+  app.use('/api/weather', weatherRoutes);
 
   // Periodically remind citizens to submit satisfaction feedback after resolution.
   feedbackReminderInterval = setInterval(() => {
