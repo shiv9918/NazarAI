@@ -5,7 +5,7 @@ import { assignDepartment } from '../utils/reportAssignment';
 import { detectIssueFromImage } from '../services/geminiVision';
 import { sendTwilioWhatsAppMessage } from '../services/twilioWhatsapp';
 import { handleIncomingResolutionFeedback } from '../services/whatsappResolutionFlow';
-import { reverseGeocodeCoordinates, formatGeocodeResult } from '../services/geocodingService';
+import { reverseGeocodeCoordinates } from '../services/geocodingService';
 
 type DbCitizen = {
   id: string;
@@ -45,12 +45,24 @@ function stripWhatsappPrefix(value: string) {
 }
 
 function parseCoordinatesFromBody(bodyText: string) {
-  const match = bodyText.match(/(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/);
+  const patterns = [
+    /(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/, // plain: 28.61,77.20
+    /[?&]q=(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/i, // maps url q=
+    /@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/i, // maps url @lat,lng
+  ];
+
+  let match: RegExpMatchArray | null = null;
+  for (const pattern of patterns) {
+    match = bodyText.match(pattern);
+    if (match) break;
+  }
+
   if (!match) return null;
 
   const lat = Number(match[1]);
   const lng = Number(match[2]);
   if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
   return { lat, lng };
 }
 
@@ -389,33 +401,36 @@ router.post('/webhook', async (req, res) => {
 
   // ========== FLOW STATE: Waiting for Location ==========
   if (session.flow_state === 'waiting_for_location') {
-    if (!isLocationMessage) {
+    const parsedLocation = parseCoordinatesFromBody(bodyText);
+    const resolvedLat = isLocationMessage ? receivedLat : parsedLocation?.lat;
+    const resolvedLng = isLocationMessage ? receivedLng : parsedLocation?.lng;
+
+    if (resolvedLat === undefined || resolvedLng === undefined) {
       // User sent text instead of location, remind them
       res.type('text/xml');
       return res.status(200).send(xmlMessage('Please share your current location using WhatsApp location feature (click +, select Location, then share your live location).'));
     }
 
     // Location received! Process the report
-    console.log(`[WhatsApp] Location received: ${receivedLat}, ${receivedLng}`);
+    console.log(`[WhatsApp] Location received: ${resolvedLat}, ${resolvedLng}`);
 
     // Reverse geocode the location to get address
-    const geocodeResult = await reverseGeocodeCoordinates(receivedLat, receivedLng);
-    if (!geocodeResult) {
-      await clearWhatsappSession(citizen.id, fromPhone);
-      res.type('text/xml');
-      return res.status(200).send(xmlMessage('We could not identify your location. Please try again with a different location.'));
+    const geocodeResult = await reverseGeocodeCoordinates(resolvedLat, resolvedLng);
+    const resolvedAddress = geocodeResult?.address || `Shared location (${resolvedLat.toFixed(6)}, ${resolvedLng.toFixed(6)})`;
+    if (geocodeResult) {
+      console.log(`[WhatsApp] Location geocoded: ${geocodeResult.address}`);
+    } else {
+      console.warn(`[WhatsApp] Geocoding failed. Falling back to coordinates: ${resolvedLat}, ${resolvedLng}`);
     }
-
-    console.log(`[WhatsApp] Location geocoded: ${geocodeResult.address}`);
 
     // Now we have everything, process the report
     const payload: ProcessingPayload = {
       from,
       bodyText: session.pending_body || '',
       mediaUrl: session.pending_media_url || '',
-      lat: receivedLat,
-      lng: receivedLng,
-      address: geocodeResult.address,
+      lat: resolvedLat,
+      lng: resolvedLng,
+      address: resolvedAddress,
       citizen,
     };
 
