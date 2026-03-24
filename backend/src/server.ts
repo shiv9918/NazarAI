@@ -12,6 +12,26 @@ import { sendPendingFeedbackReminders } from './services/whatsappResolutionFlow'
 
 let feedbackReminderInterval: NodeJS.Timeout | null = null;
 
+function normalizeOrigin(origin: string) {
+  return origin.trim().toLowerCase().replace(/\/$/, '');
+}
+
+function isAllowedOrigin(origin: string) {
+  const normalizedOrigin = normalizeOrigin(origin);
+  const allowedFromEnv = env.corsOrigins.map(normalizeOrigin);
+
+  if (allowedFromEnv.includes(normalizedOrigin)) {
+    return true;
+  }
+
+  // Allow Vercel preview and production deployments.
+  if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(normalizedOrigin)) {
+    return true;
+  }
+
+  return false;
+}
+
 async function startServer() {
   await testConnection();
   await runMigrations();
@@ -19,7 +39,20 @@ async function startServer() {
   const app = express();
 
   app.use(cors({
-    origin: env.corsOrigins,
+    origin: (origin, callback) => {
+      // Allow non-browser requests (curl, health checks, server-to-server).
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
     credentials: true,
   }));
   app.use(express.json({ limit: '20mb' }));

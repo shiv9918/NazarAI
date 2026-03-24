@@ -316,7 +316,7 @@ const resources = {
   },
   hi: {
     translation: {
-      "app_name": "AI सिविकआई",
+      "app_name": "Nazar AI",
       "hero_title": "दिल्ली के लिए AI-संचालित नागरिक निगरानी",
       "hero_subtitle": "सेकंडों में समस्याओं की रिपोर्ट करें। OpenCV मॉडल पहचानता है। सरकार समाधान करती है।",
       "report_issue": "समस्या की रिपोर्ट करें",
@@ -357,7 +357,7 @@ const resources = {
       "delhi_municipal_corp": "दिल्ली नगर निगम",
       "civic_centre": "सिविक सेंटर, मिंटो रोड",
       "new_delhi_address": "नई दिल्ली, दिल्ली 110002",
-      "copyright": "© 2026 AI सिविकआई। दिल्ली राष्ट्रीय राजधानी क्षेत्र सरकार।",
+      "copyright": "© 2026 Nazar AI। दिल्ली राष्ट्रीय राजधानी क्षेत्र सरकार।",
       "privacy_policy": "गोपनीयता नीति",
       "terms_of_service": "सेवा की शर्तें",
       "back": "पीछे",
@@ -437,7 +437,7 @@ const resources = {
       "email_sent_desc": "कृपया निर्देशों के लिए अपना इनबॉक्स देखें।",
       "send_reset_link": "रीसेट लिंक भेजें",
       "create_account_title": "खाता बनाएं",
-      "create_account_subtitle": "अपने शहर को बेहतर बनाने के लिए AI सिविकआई से जुड़ें।",
+      "create_account_subtitle": "अपने शहर को बेहतर बनाने के लिए Nazar AI से जुड़ें।",
       "success_title": "सफलता!",
       "account_created_desc": "आपका खाता बना दिया गया है। लॉगिन पर रीडायरेक्ट किया जा रहा है...",
       "first_name": "पहला नाम",

@@ -53,6 +53,11 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [forgotStep, setForgotStep] = useState<'request' | 'verify'>('request');
+  const [otpCode, setOtpCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [devOtpHint, setDevOtpHint] = useState<string | null>(null);
   const navigate = useNavigate();
   const { user, setSession } = useAuth();
 
@@ -80,7 +85,6 @@ export default function Login() {
       const response = await postAuth<AuthResponse>('/api/auth/login', {
         email,
         password,
-        phone: phone.trim() || null,
         portalRole: activeTab,
         department: activeTab === 'department' ? selectedDept : null,
       });
@@ -112,8 +116,53 @@ export default function Login() {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
-    setIsLoading(false);
-    setError('Forgot password flow is not configured yet in PostgreSQL auth backend.');
+
+    try {
+      const response = await postAuth<{ message: string; devOtp?: string }>('/api/auth/forgot-password', {
+        email,
+      });
+
+      setDevOtpHint(response.devOtp || null);
+      setForgotStep('verify');
+      setIsSuccess(true);
+      setIsLoading(false);
+    } catch (err: any) {
+      setError(err?.message || 'Unable to send OTP. Please try again.');
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+
+    if (newPassword !== confirmNewPassword) {
+      setError('New password and confirm password do not match.');
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      await postAuth<{ message: string }>('/api/auth/reset-password', {
+        email,
+        otp: otpCode,
+        newPassword,
+      });
+
+      setIsLoading(false);
+      setIsSuccess(true);
+      setView('login');
+      setForgotStep('request');
+      setOtpCode('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setDevOtpHint(null);
+      setError(null);
+    } catch (err: any) {
+      setError(err?.message || 'Unable to reset password.');
+      setIsLoading(false);
+    }
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -311,21 +360,6 @@ export default function Login() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-400 ml-1 dark:text-slate-500">Mobile Number</label>
-                    <div className="relative group">
-                      <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors dark:text-slate-500 dark:group-focus-within:text-blue-400" size={20} />
-                      <input
-                        type="tel"
-                        required
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="+91XXXXXXXXXX"
-                        className="w-full rounded-2xl border-none bg-slate-50 py-4.5 pl-12 pr-4 text-slate-900 ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500 transition-all outline-none dark:bg-slate-800 dark:text-white dark:ring-slate-700 dark:focus:ring-blue-400"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
                     <label className="text-xs font-bold uppercase tracking-wider text-slate-400 ml-1 dark:text-slate-500">{t('password')}</label>
                     <div className="relative group">
                       <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors dark:text-slate-500 dark:group-focus-within:text-blue-400" size={20} />
@@ -405,7 +439,16 @@ export default function Login() {
                 exit={{ opacity: 0, y: -20 }}
               >
                 <button 
-                  onClick={() => setView('login')}
+                  onClick={() => {
+                    setView('login');
+                    setForgotStep('request');
+                    setOtpCode('');
+                    setNewPassword('');
+                    setConfirmNewPassword('');
+                    setDevOtpHint(null);
+                    setError(null);
+                    setIsSuccess(false);
+                  }}
                   className="flex items-center gap-2 text-slate-500 hover:text-slate-900 mb-8 font-bold transition-colors dark:text-slate-400 dark:hover:text-white"
                 >
                   <ArrowLeft size={20} />
@@ -423,13 +466,7 @@ export default function Login() {
                   </div>
                 )}
 
-                {isSuccess ? (
-                  <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-[2rem] text-center dark:bg-emerald-900/20 dark:border-emerald-800">
-                    <CheckCircle className="mx-auto text-emerald-500 mb-4" size={48} />
-                    <h3 className="text-xl font-bold text-emerald-900 dark:text-emerald-400">{t('email_sent_title')}</h3>
-                    <p className="text-emerald-700 dark:text-emerald-500 mt-2">{t('email_sent_desc')}</p>
-                  </div>
-                ) : (
+                {forgotStep === 'request' ? (
                   <form onSubmit={handleForgot} className="space-y-6">
                     <div className="space-y-2">
                       <label className="text-xs font-bold uppercase tracking-wider text-slate-400 ml-1 dark:text-slate-500">{t('email')}</label>
@@ -451,6 +488,81 @@ export default function Login() {
                       className="flex w-full items-center justify-center gap-3 rounded-2xl py-5 text-lg font-bold text-white bg-blue-600 shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all dark:shadow-none"
                     >
                       {isLoading ? <Loader2 className="animate-spin" size={24} /> : t('send_reset_link')}
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleResetPassword} className="space-y-6">
+                    <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-[2rem] text-center dark:bg-emerald-900/20 dark:border-emerald-800">
+                      <CheckCircle className="mx-auto text-emerald-500 mb-4" size={48} />
+                      <h3 className="text-xl font-bold text-emerald-900 dark:text-emerald-400">OTP Sent</h3>
+                      <p className="text-emerald-700 dark:text-emerald-500 mt-2">Please check your registered mobile number.</p>
+                      {devOtpHint && (
+                        <p className="mt-3 text-sm font-bold text-emerald-700 dark:text-emerald-400">Dev OTP: {devOtpHint}</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold uppercase tracking-wider text-slate-400 ml-1 dark:text-slate-500">OTP</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        required
+                        value={otpCode}
+                        onChange={(e) => setOtpCode(e.target.value)}
+                        placeholder="Enter 6-digit OTP"
+                        className="w-full rounded-2xl border-none bg-slate-50 py-4 px-4 text-slate-900 ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500 transition-all outline-none dark:bg-slate-800 dark:text-white dark:ring-slate-700 dark:focus:ring-blue-400"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold uppercase tracking-wider text-slate-400 ml-1 dark:text-slate-500">New Password</label>
+                      <input
+                        type="password"
+                        required
+                        minLength={6}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full rounded-2xl border-none bg-slate-50 py-4 px-4 text-slate-900 ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500 transition-all outline-none dark:bg-slate-800 dark:text-white dark:ring-slate-700 dark:focus:ring-blue-400"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold uppercase tracking-wider text-slate-400 ml-1 dark:text-slate-500">Confirm New Password</label>
+                      <input
+                        type="password"
+                        required
+                        minLength={6}
+                        value={confirmNewPassword}
+                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full rounded-2xl border-none bg-slate-50 py-4 px-4 text-slate-900 ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500 transition-all outline-none dark:bg-slate-800 dark:text-white dark:ring-slate-700 dark:focus:ring-blue-400"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="flex w-full items-center justify-center gap-3 rounded-2xl py-5 text-lg font-bold text-white bg-blue-600 shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all dark:shadow-none"
+                    >
+                      {isLoading ? <Loader2 className="animate-spin" size={24} /> : 'Reset Password'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForgotStep('request');
+                        setOtpCode('');
+                        setNewPassword('');
+                        setConfirmNewPassword('');
+                        setDevOtpHint(null);
+                        setError(null);
+                        setIsSuccess(false);
+                      }}
+                      className="w-full rounded-2xl py-3 text-sm font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      Resend OTP
                     </button>
                   </form>
                 )}

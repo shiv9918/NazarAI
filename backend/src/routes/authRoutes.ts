@@ -1,10 +1,15 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import { randomInt } from 'node:crypto';
 import { z } from 'zod';
 import { pool } from '../config/db';
 import { requireAuth } from '../middleware/auth';
 import { LoginPortalRole, PublicUser, UserRecord, UserRole, USER_ROLES } from '../types/auth';
 import { signToken } from '../utils/token';
+import { sendTwilioSmsMessage } from '../services/twilioWhatsapp';
+
+const OTP_TTL_MINUTES = 10;
+const OTP_MAX_ATTEMPTS = 5;
 
 const signupSchema = z.object({
   firstName: z.string().trim().min(1),
@@ -19,7 +24,6 @@ const signupSchema = z.object({
 const loginSchema = z.object({
   email: z.string().trim().email(),
   password: z.string().min(1),
-  phone: z.string().trim().min(8).max(20),
   portalRole: z.enum(['citizen', 'municipal', 'department']).optional(),
   department: z.string().trim().optional().nullable(),
 });
@@ -39,6 +43,26 @@ const updateProfileSchema = z.object({
   currentPassword: z.string().min(1).optional(),
   newPassword: z.string().min(6).optional(),
 });
+
+const forgotPasswordSchema = z.object({
+  email: z.string().trim().email(),
+});
+
+const resetPasswordWithOtpSchema = z.object({
+  email: z.string().trim().email(),
+  otp: z.string().trim().length(6),
+  newPassword: z.string().min(6),
+});
+
+function generateOtp() {
+  return randomInt(100000, 1000000).toString();
+}
+
+function maskPhoneNumber(phone: string) {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 4) return '****';
+  return `******${digits.slice(-4)}`;
+}
 
 function toPublicUser(record: UserRecord): PublicUser {
   const normalizedDepartment = normalizeDepartment(record.department);
@@ -129,7 +153,6 @@ router.post('/login', async (req, res) => {
   }
 
   const { email, password, portalRole } = parsed.data;
-  const requestedPhone = parsed.data.phone.trim();
   const requestedDepartment = normalizeDepartment(parsed.data.department);
   const normalizedEmail = email.toLowerCase();
 
@@ -150,10 +173,6 @@ router.post('/login', async (req, res) => {
 
   if (!validPassword) {
     return res.status(401).json({ message: 'Invalid email or password.' });
-  }
-
-  if ((record.phone || '').trim() !== requestedPhone) {
-    return res.status(401).json({ message: 'Invalid mobile number for this account.' });
   }
 
   if (!matchesPortalRole(portalRole, record.role)) {
@@ -320,8 +339,139 @@ router.patch('/me', requireAuth, async (req, res) => {
   return res.json({ user: toPublicUser(updated.rows[0]) });
 });
 
-router.post('/forgot-password', async (_req, res) => {
-  return res.status(501).json({ message: 'Forgot password flow is not configured yet.' });
+router.post('/forgot-password', async (req, res) => {
+  const parsed = forgotPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid forgot-password payload.' });
+  }
+
+  const normalizedEmail = parsed.data.email.toLowerCase();
+
+  const userResult = await pool.query<UserRecord>(
+    `SELECT id, first_name, last_name, email, role, department, points, avatar, phone, location, bio, notify_issue_updates, notify_new_rewards, notify_city_alerts, preferred_theme, preferred_language, created_at, updated_at, last_login_at
+     FROM users
+     WHERE LOWER(email) = LOWER($1)
+     LIMIT 1`,
+    [normalizedEmail]
+  );
+
+  // Always return success-like response to avoid user enumeration.
+  if (!userResult.rowCount) {
+    return res.json({ message: 'If an account exists for this email, an OTP has been sent.' });
+  }
+
+  const user = userResult.rows[0];
+  const userPhone = (user.phone || '').trim();
+
+  if (!userPhone) {
+    return res.status(400).json({ message: 'No mobile number is registered with this account.' });
+  }
+
+  const otp = generateOtp();
+  const otpHash = await bcrypt.hash(otp, 10);
+
+  await pool.query(
+    `UPDATE password_reset_otps
+     SET consumed_at = NOW()
+     WHERE user_id = $1
+       AND consumed_at IS NULL`,
+    [user.id]
+  );
+
+  await pool.query(
+    `INSERT INTO password_reset_otps (user_id, otp_hash, expires_at)
+     VALUES ($1, $2, NOW() + INTERVAL '${OTP_TTL_MINUTES} minutes')`,
+    [user.id, otpHash]
+  );
+
+  const smsBody = `Nazar AI OTP: ${otp}. Valid for ${OTP_TTL_MINUTES} minutes. Do not share this code.`;
+  const smsResult = await sendTwilioSmsMessage({
+    to: userPhone,
+    message: smsBody,
+  });
+
+  if (!smsResult.ok) {
+    if (smsResult.internalReason === 'MISSING_SMS_SENDER') {
+      return res.status(500).json({
+        message: 'SMS sender is not configured. Set TWILIO_SMS_NUMBER or TWILIO_MESSAGING_SERVICE_SID in backend env.',
+      });
+    }
+
+    if (smsResult.providerCode === 21660) {
+      return res.status(500).json({
+        message: 'Twilio sender mismatch. Use a sender number or messaging service that belongs to your Twilio account.',
+      });
+    }
+
+    const debugInfo = smsResult.providerCode
+      ? ` (Twilio ${smsResult.providerCode}: ${smsResult.providerMessage || 'Unknown error'})`
+      : '';
+
+    return res.status(500).json({
+      message: `Unable to send OTP SMS right now. Please try again shortly${process.env.NODE_ENV === 'production' ? '' : debugInfo}.`,
+    });
+  }
+
+  return res.json({ message: `OTP sent to your registered mobile ending with ${maskPhoneNumber(userPhone)}.` });
+});
+
+router.post('/reset-password', async (req, res) => {
+  const parsed = resetPasswordWithOtpSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid reset-password payload.' });
+  }
+
+  const normalizedEmail = parsed.data.email.toLowerCase();
+  const { otp, newPassword } = parsed.data;
+
+  const otpResult = await pool.query<{
+    id: string;
+    user_id: string;
+    otp_hash: string;
+    expires_at: string;
+    consumed_at: string | null;
+    attempts: number;
+  }>(
+    `SELECT pro.id, pro.user_id, pro.otp_hash, pro.expires_at, pro.consumed_at, pro.attempts
+     FROM password_reset_otps pro
+     JOIN users u ON u.id = pro.user_id
+     WHERE LOWER(u.email) = LOWER($1)
+       AND pro.consumed_at IS NULL
+     ORDER BY pro.created_at DESC
+     LIMIT 1`,
+    [normalizedEmail]
+  );
+
+  if (!otpResult.rowCount) {
+    return res.status(400).json({ message: 'Invalid or expired OTP.' });
+  }
+
+  const otpRecord = otpResult.rows[0];
+  const isExpired = new Date(otpRecord.expires_at).getTime() < Date.now();
+
+  if (isExpired) {
+    await pool.query('UPDATE password_reset_otps SET consumed_at = NOW() WHERE id = $1', [otpRecord.id]);
+    return res.status(400).json({ message: 'Invalid or expired OTP.' });
+  }
+
+  if (otpRecord.attempts >= OTP_MAX_ATTEMPTS) {
+    await pool.query('UPDATE password_reset_otps SET consumed_at = NOW() WHERE id = $1', [otpRecord.id]);
+    return res.status(400).json({ message: 'Too many invalid OTP attempts. Please request a new OTP.' });
+  }
+
+  const validOtp = await bcrypt.compare(otp, otpRecord.otp_hash);
+
+  if (!validOtp) {
+    await pool.query('UPDATE password_reset_otps SET attempts = attempts + 1 WHERE id = $1', [otpRecord.id]);
+    return res.status(400).json({ message: 'Invalid or expired OTP.' });
+  }
+
+  const newPasswordHash = await bcrypt.hash(newPassword, 10);
+
+  await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newPasswordHash, otpRecord.user_id]);
+  await pool.query('UPDATE password_reset_otps SET consumed_at = NOW() WHERE id = $1', [otpRecord.id]);
+
+  return res.json({ message: 'Password reset successful. Please login with your new password.' });
 });
 
 export default router;

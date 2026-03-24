@@ -203,6 +203,17 @@ CREATE TABLE IF NOT EXISTS weather_department_notifications (
   UNIQUE (alert_id, department)
 );
 
+CREATE TABLE IF NOT EXISTS password_reset_otps (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  otp_hash TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  expires_at TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_lower ON users ((LOWER(email)));
 CREATE INDEX IF NOT EXISTS reports_reported_at_desc_idx ON reports (reported_at DESC);
 CREATE INDEX IF NOT EXISTS reports_department_idx ON reports (department);
@@ -214,6 +225,8 @@ CREATE INDEX IF NOT EXISTS whatsapp_feedback_due_at_idx ON whatsapp_feedback_req
 CREATE INDEX IF NOT EXISTS weather_department_alerts_created_at_idx ON weather_department_alerts (created_at DESC);
 CREATE INDEX IF NOT EXISTS weather_department_alerts_expires_at_idx ON weather_department_alerts (expires_at DESC);
 CREATE INDEX IF NOT EXISTS weather_department_notifications_department_idx ON weather_department_notifications (department, delivered_at DESC);
+CREATE INDEX IF NOT EXISTS password_reset_otps_user_id_idx ON password_reset_otps (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS password_reset_otps_expires_at_idx ON password_reset_otps (expires_at DESC);
 
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
@@ -248,5 +261,12 @@ DROP TRIGGER IF EXISTS whatsapp_feedback_requests_set_updated_at ON whatsapp_fee
 
 CREATE TRIGGER whatsapp_feedback_requests_set_updated_at
 BEFORE UPDATE ON whatsapp_feedback_requests
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS password_reset_otps_set_updated_at ON password_reset_otps;
+
+CREATE TRIGGER password_reset_otps_set_updated_at
+BEFORE UPDATE ON password_reset_otps
 FOR EACH ROW
 EXECUTE FUNCTION set_updated_at();
