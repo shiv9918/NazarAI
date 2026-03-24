@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { Eye, Menu, X, Globe, User, Shield, LogIn, LogOut, ChevronDown, Award, Settings } from 'lucide-react';
+import { Menu, X, Globe, User, Shield, LogIn, LogOut, ChevronDown, Award, Settings } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
@@ -47,9 +47,11 @@ export default function Navbar() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           <Link to={brandRedirectPath} className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-200">
-              <Eye size={24} />
-            </div>
+            <img
+              src="/logo.png"
+              alt="Nazar AI Logo"
+              className="h-14 w-auto object-contain"
+            />
             <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">{t('app_name')}</span>
           </Link>
 

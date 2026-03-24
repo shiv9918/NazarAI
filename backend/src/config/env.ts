@@ -1,6 +1,13 @@
 import dotenv from 'dotenv';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-dotenv.config();
+const currentFile = fileURLToPath(import.meta.url);
+const currentDir = path.dirname(currentFile);
+const backendEnvPath = path.resolve(currentDir, '../../.env');
+
+// Always resolve env from backend/.env, even when command is executed from workspace root.
+dotenv.config({ path: backendEnvPath });
 
 const DEFAULT_DATABASE_NAME = 'nazarai';
 const DEFAULT_CORS_ORIGINS = [
@@ -51,6 +58,8 @@ export const env = {
   geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   twilioAccountSid: process.env.TWILIO_ACCOUNT_SID,
   twilioAuthToken: process.env.TWILIO_AUTH_TOKEN,
+  twilioSmsNumber: process.env.TWILIO_SMS_NUMBER,
+  twilioMessagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
   twilioWhatsappNumber: process.env.TWILIO_WHATSAPP_NUMBER,
   openWeatherApiKey: process.env.OPENWEATHER_API_KEY,
   openWeatherLat: Number(process.env.OPENWEATHER_LAT || 28.6139),
