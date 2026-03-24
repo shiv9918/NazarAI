@@ -15,6 +15,63 @@ export interface GeminiImageResult {
   reasoning: string;
 }
 
+const ALLOWED_ISSUE_TYPES = new Set([
+  'pothole',
+  'garbage_overflow',
+  'broken_streetlight',
+  'water_leakage',
+  'illegal_dumping',
+  'fallen_tree',
+  'hanging_wire',
+  'park_broken_equipment',
+  'public_bench_broken',
+]);
+
+const ISSUE_TYPE_ALIASES: Record<string, string> = {
+  garbage: 'garbage_overflow',
+  garbage_overflow: 'garbage_overflow',
+  illegal_dump: 'illegal_dumping',
+  illegal_dumping: 'illegal_dumping',
+  dump: 'illegal_dumping',
+  streetlight: 'broken_streetlight',
+  broken_streetlight: 'broken_streetlight',
+  street_light: 'broken_streetlight',
+  water: 'water_leakage',
+  water_leakage: 'water_leakage',
+  leakage: 'water_leakage',
+  pothole: 'pothole',
+  fallen_tree: 'fallen_tree',
+  tree_fallen: 'fallen_tree',
+  hanging_wire: 'hanging_wire',
+  loose_wire: 'hanging_wire',
+  park_broken_equipment: 'park_broken_equipment',
+  broken_park_equipment: 'park_broken_equipment',
+  public_bench_broken: 'public_bench_broken',
+  broken_bench: 'public_bench_broken',
+};
+
+const ISSUE_TYPE_TO_DEPARTMENT: Record<string, string> = {
+  garbage_overflow: 'sanitation',
+  illegal_dumping: 'sanitation',
+  pothole: 'roads',
+  broken_streetlight: 'electrical',
+  hanging_wire: 'electrical',
+  water_leakage: 'water',
+  fallen_tree: 'administration',
+  park_broken_equipment: 'administration',
+  public_bench_broken: 'administration',
+};
+
+function normalizeIssueType(rawValue: unknown): string | null {
+  if (typeof rawValue !== 'string') return null;
+  const normalized = rawValue.toLowerCase().trim().replace(/\s+/g, '_');
+  if (!normalized) return null;
+
+  const aliased = ISSUE_TYPE_ALIASES[normalized] || normalized;
+  if (!ALLOWED_ISSUE_TYPES.has(aliased)) return null;
+  return aliased;
+}
+
 export interface GeminiTextResult {
   isComplaint: boolean;
   issueType: string | null;
@@ -93,14 +150,14 @@ export const analyzeIssueImage = async (
       ? imageBase64.split(',')[1]
       : imageBase64;
 
-    const prompt = `You are an AI assistant for NazarAI, a smart civic issue reporting system for Indian cities.
+    const prompt = `You are a civic issue image classifier for Indian cities.
 
 Analyze this image and detect if it shows a civic infrastructure problem.
 
 Respond ONLY in this exact JSON format, no extra text:
 {
   "detected": true or false,
-  "issueType": "one of exactly: garbage_overflow / pothole / broken_streetlight / water_leakage / illegal_dump / other / null",
+  "issueType": "one of exactly: pothole / garbage_overflow / broken_streetlight / water_leakage / illegal_dumping / fallen_tree / hanging_wire / park_broken_equipment / public_bench_broken / null",
   "confidence": 0.0 to 1.0,
   "severity": 1 to 10,
   "description": "2-3 sentence description of what you see in English",
@@ -114,8 +171,9 @@ Classification rules:
 - pothole → roads department
 - broken_streetlight → electrical department
 - water_leakage → water department
-- illegal_dump → sanitation department
-- other → administration department
+- illegal_dumping → sanitation department
+- fallen_tree / park_broken_equipment / public_bench_broken → administration department
+- hanging_wire → electrical department
 
 Severity rules:
 - 1-3: Minor issue, no immediate danger
@@ -146,15 +204,19 @@ Only JSON response. No markdown. No extra text.`;
     }
 
     const parsedResult = JSON.parse(jsonMatch[0]);
+    const normalizedIssueType = normalizeIssueType(parsedResult.issueType);
+    const resolvedDepartment = normalizedIssueType
+      ? ISSUE_TYPE_TO_DEPARTMENT[normalizedIssueType] || null
+      : null;
 
     // Validate and map response to interface
     const result: GeminiImageResult = {
-      detected: Boolean(parsedResult.detected),
-      issueType: parsedResult.issueType || null,
-      confidence: Number(parsedResult.confidence) || 0,
+      detected: Boolean(parsedResult.detected) && Boolean(normalizedIssueType),
+      issueType: normalizedIssueType,
+      confidence: Math.max(0, Math.min(1, Number(parsedResult.confidence) || 0)),
       severity: Number(parsedResult.severity) || 5,
       description: String(parsedResult.description || ''),
-      department: parsedResult.department || null,
+      department: resolvedDepartment,
       urgency: (parsedResult.urgency as 'low' | 'medium' | 'high' | 'critical') || 'low',
       reasoning: String(parsedResult.reasoning || ''),
     };
@@ -167,10 +229,10 @@ Only JSON response. No markdown. No extra text.`;
         issueType: null,
         confidence: 0,
         severity: 5,
-        description: 'AI analysis is temporarily unavailable. Please choose the issue type manually.',
+        description: 'Model scan is temporarily unavailable. Please try again with a clear issue photo.',
         department: null,
         urgency: 'medium',
-        reasoning: 'Fallback used because Gemini API quota/config is unavailable.',
+        reasoning: 'Fallback used because model service is unavailable.',
       };
     }
 

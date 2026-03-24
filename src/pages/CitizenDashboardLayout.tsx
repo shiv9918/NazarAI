@@ -1,25 +1,27 @@
 import { useState } from 'react';
 import { LayoutDashboard, Search, Award, Menu, X } from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 export default function CitizenDashboardLayout() {
+  const { t } = useTranslation();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const sidebarLinks = [
-    { name: 'Dashboard Home', path: '/citizen-dashboard', icon: <LayoutDashboard size={20} /> },
-    { name: 'Track My Application', path: '/track', icon: <Search size={20} /> },
-    { name: 'Leaderboard', path: '/leaderboard', icon: <Award size={20} /> },
+    { name: t('citizen_layout.dashboard_home'), path: '/citizen-dashboard', icon: <LayoutDashboard size={20} /> },
+    { name: t('citizen_layout.track_application'), path: '/track', icon: <Search size={20} /> },
+    { name: t('citizen_layout.leaderboard'), path: '/leaderboard', icon: <Award size={20} /> },
   ];
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden dark:bg-slate-950">
+    <div className="flex min-h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950">
       {/* Sidebar for Desktop */}
       <aside className="w-64 border-r border-slate-200 bg-white hidden lg:flex flex-col dark:border-slate-800 dark:bg-slate-950">
         <div className="p-6 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-2 text-blue-600 font-bold text-xl dark:text-blue-400">
             <LayoutDashboard size={24} />
-            Citizen Portal
+            {t('citizen_layout.citizen_portal')}
           </div>
         </div>
         <nav className="flex-1 p-4 space-y-2">
@@ -41,7 +43,7 @@ export default function CitizenDashboardLayout() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 flex flex-col">
         {/* Top Header */}
         <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-8 dark:border-slate-800 dark:bg-slate-950">
           <div className="flex items-center gap-4">
@@ -58,7 +60,7 @@ export default function CitizenDashboardLayout() {
         </header>
 
         {/* Scrollable Area */}
-        <div className="flex-1 overflow-y-auto p-8">
+        <div className="flex-1 p-8">
           <Outlet />
         </div>
       </main>
@@ -72,7 +74,7 @@ export default function CitizenDashboardLayout() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-blue-600 font-bold text-xl dark:text-blue-400">
                   <LayoutDashboard size={24} />
-                  Citizen Portal
+                  {t('citizen_layout.citizen_portal')}
                 </div>
                 <button onClick={() => setIsMobileMenuOpen(false)}>
                   <X size={24} className="text-slate-400" />

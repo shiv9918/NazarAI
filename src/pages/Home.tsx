@@ -56,7 +56,7 @@ export default function Home() {
               AI-Powered Civic Monitoring for Delhi
             </h1>
             <p className="mt-6 max-w-2xl text-base text-white/90 sm:text-lg">
-              Report issues in seconds. AI detects. Government resolves..
+              Report issues in seconds. OpenCV model detects. Government resolves.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-4">
               <button

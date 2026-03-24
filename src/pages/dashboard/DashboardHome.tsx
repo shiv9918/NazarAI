@@ -35,6 +35,8 @@ type DepartmentName = 'roads' | 'sanitation' | 'electrical' | 'water' | 'adminis
 
 type Report = {
   id: string;
+  complaintCode?: string;
+  complaintNumber?: number;
   type: string;
   severity: number;
   lat: number;
@@ -54,8 +56,13 @@ type Report = {
   updatedAt: string;
   citizenName?: string;
   citizenEmail?: string;
+  citizenPhone?: string;
   aiDescription?: string | null;
+  citizenRating?: 'satisfied' | 'unsatisfied' | null;
+  isReopened?: boolean;
 };
+
+type DashboardTab = 'all' | 'recomplaints';
 
 type ModalForm = {
   status: ReportStatus;
@@ -166,6 +173,7 @@ export default function DashboardHome() {
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchText, setSearchText] = useState('');
+  const [activeTab, setActiveTab] = useState<DashboardTab>('all');
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [modalForm, setModalForm] = useState<ModalForm | null>(null);
   const [saving, setSaving] = useState(false);
@@ -309,16 +317,24 @@ export default function DashboardHome() {
     const search = searchText.toLowerCase().trim();
 
     return reports.filter((report) => {
+      const isRecomplaint = Boolean(report.isReopened) || report.citizenRating === 'unsatisfied';
+      if (activeTab === 'recomplaints' && !isRecomplaint) return false;
+
       if (departmentFilter !== 'all' && report.department !== departmentFilter) return false;
       if (statusFilter !== 'all' && report.status !== statusFilter) return false;
       if (!search) return true;
 
       return (
         report.location.toLowerCase().includes(search) ||
-        report.id.toLowerCase().includes(search)
+        report.id.toLowerCase().includes(search) ||
+        (report.complaintCode || '').toLowerCase().includes(search)
       );
     });
-  }, [reports, departmentFilter, statusFilter, searchText]);
+  }, [reports, activeTab, departmentFilter, statusFilter, searchText]);
+
+  const reComplaintCount = useMemo(() => {
+    return reports.filter((report) => Boolean(report.isReopened) || report.citizenRating === 'unsatisfied').length;
+  }, [reports]);
 
   const liveFeed = useMemo(() => {
     return [...reports]
@@ -519,9 +535,144 @@ export default function DashboardHome() {
       </div>
 
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <h3 className="mb-2 text-lg font-black text-slate-900 dark:text-white">Latest Complaints</h3>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Quick snapshot of most recent reports (no detailed filters)</p>
-      </div>
+        <h3 className="mb-4 text-lg font-black text-slate-900 dark:text-white">Issue Status</h3>
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setActiveTab('all')}
+            className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-wide transition ${
+              activeTab === 'all'
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+            }`}
+          >
+            All Complaints ({reports.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('recomplaints')}
+            className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-wide transition ${
+              activeTab === 'recomplaints'
+                ? 'bg-amber-600 text-white'
+                : 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50'
+            }`}
+          >
+            Re-Complaints ({reComplaintCount})
+          </button>
+          {activeTab === 'recomplaints' && (
+            <div className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+              These reports were rated "NAHI" by citizens. Open and re-assign department as needed.
+            </div>
+          )}
+        </div>
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+            <div className="relative min-w-[220px] flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Search by location or ID"
+                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Filter size={16} className="text-slate-400" />
+              <select
+                value={departmentFilter}
+                onChange={(e) => setDepartmentFilter(e.target.value)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              >
+                <option value="all">All Departments</option>
+                <option value="roads">Roads</option>
+                <option value="sanitation">Sanitation</option>
+                <option value="electrical">Electrical</option>
+                <option value="water">Water</option>
+                <option value="administration">Administration</option>
+              </select>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              >
+                <option value="all">All Status</option>
+                <option value="reported">Pending</option>
+                <option value="in_progress">In Progress</option>
+                <option value="resolved">Resolved</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-left">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs font-black uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                  <th className="px-3 py-3">Complaint ID</th>
+                  <th className="px-3 py-3">Issue Type</th>
+                  <th className="px-3 py-3">Location</th>
+                  <th className="px-3 py-3">Department</th>
+                  <th className="px-3 py-3">Severity</th>
+                  <th className="px-3 py-3">Status</th>
+                  <th className="px-3 py-3">Created At</th>
+                  <th className="px-3 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredReports.map((report) => (
+                  <tr
+                    key={report.id}
+                    className="cursor-pointer border-b border-slate-100 text-sm hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/30"
+                    onClick={() => openReportModal(report)}
+                  >
+                    <td className="px-3 py-3 font-bold text-slate-800 dark:text-slate-200">{report.complaintCode || report.id}</td>
+                    <td className="px-3 py-3 capitalize text-slate-700 dark:text-slate-300">{report.type.replace(/_/g, ' ')}</td>
+                    <td className="px-3 py-3 text-slate-600 dark:text-slate-400">{report.location}</td>
+                    <td className="px-3 py-3">
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                        {report.department}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${
+                        report.severity >= 8
+                          ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
+                          : report.severity >= 5
+                            ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'
+                            : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+                      }`}>
+                        {report.severity}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 font-semibold text-slate-700 dark:text-slate-300">{statusLabel(report.status, t)}</td>
+                    <td className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400">{formatDateTime(report.reportedAt)}</td>
+                    <td className="px-3 py-3 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {(report.isReopened || report.citizenRating === 'unsatisfied') && (
+                          <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black uppercase text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                            Re-Complaint
+                          </span>
+                        )}
+                        <button
+                          className="rounded-lg p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/30"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openReportModal(report);
+                          }}
+                        >
+                          <Eye size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filteredReports.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
+                      No complaints matched your filters.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
       {/* <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -573,9 +724,16 @@ export default function DashboardHome() {
 
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <div className="space-y-4">
-                  <h3 className="text-2xl font-black capitalize text-slate-900 dark:text-white">
-                    {selectedReport.type.replace(/_/g, ' ')}
-                  </h3>
+                  <div className="flex items-start justify-between">
+                    <h3 className="text-2xl font-black capitalize text-slate-900 dark:text-white">
+                      {selectedReport.type.replace(/_/g, ' ')}
+                    </h3>
+                    {(selectedReport.isReopened || selectedReport.citizenRating === 'unsatisfied') && (
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black uppercase text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                        Re-Complaint
+                      </span>
+                    )}
+                  </div>
 
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
                     {selectedReport.imageUrl ? (
@@ -590,9 +748,26 @@ export default function DashboardHome() {
                       <div>{selectedReport.description || 'No description provided'}</div>
                     </div>
                     <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                      ID: {selectedReport.id} | Reporter: {selectedReport.citizenName || '-'}
+                      ID: {selectedReport.complaintCode || selectedReport.id} | Reporter: {selectedReport.citizenName || '-'}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      Mobile: {selectedReport.citizenPhone || '-'}
                     </div>
                   </div>
+
+                  {(selectedReport.isReopened || selectedReport.citizenRating === 'unsatisfied') && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/30 dark:bg-amber-950/20">
+                      <div className="mb-2 text-sm font-bold text-amber-900 dark:text-amber-200">Citizen Feedback (Why Re-opened)</div>
+                      <div className="text-sm text-amber-800 dark:text-amber-300">
+                        {selectedReport.citizenFeedback || 'Citizen marked this complaint as unsatisfactory.'}
+                      </div>
+                      {selectedReport.citizenRating && (
+                        <div className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                          Rating: <span className="font-black uppercase">{selectedReport.citizenRating}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
                     <div className="mb-2 text-sm font-bold text-slate-800 dark:text-slate-200">Resolution Notes</div>
@@ -613,6 +788,8 @@ export default function DashboardHome() {
                       <div className="text-slate-500 dark:text-slate-400">{selectedReport.ward || 'No ward specified'}</div>
                       <div className="text-slate-500 dark:text-slate-400">Severity: {selectedReport.severity}</div>
                       <div className="text-slate-500 dark:text-slate-400">Created: {formatDateTime(selectedReport.reportedAt)}</div>
+                      <div className="text-slate-500 dark:text-slate-400">Citizen: {selectedReport.citizenName || '-'}</div>
+                      <div className="text-slate-500 dark:text-slate-400">Citizen Mobile: {selectedReport.citizenPhone || '-'}</div>
                     </div>
                   </div>
 
@@ -631,6 +808,11 @@ export default function DashboardHome() {
 
                   <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
                     <div className="mb-2 text-sm font-bold text-slate-800 dark:text-slate-200">Assigned Department</div>
+                    {(selectedReport.isReopened || selectedReport.citizenRating === 'unsatisfied') && (
+                      <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-800 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-300">
+                        ⚠️ This complaint was reopened. Consider re-assigning to a different department for better resolution.
+                      </div>
+                    )}
                     <select
                       value={modalForm.department}
                       onChange={(e) => setModalForm({ ...modalForm, department: e.target.value })}

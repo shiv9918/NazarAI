@@ -17,6 +17,30 @@ import { useTheme } from '../context/ThemeContext';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
+const ISSUE_OPTIONS = [
+  { id: 'pothole', name: 'Pothole', department: 'roads', severity: 7 },
+  { id: 'garbage_overflow', name: 'Garbage Overflow', department: 'sanitation', severity: 6 },
+  { id: 'broken_streetlight', name: 'Broken Streetlight', department: 'electrical', severity: 5 },
+  { id: 'water_leakage', name: 'Water Leakage', department: 'water', severity: 8 },
+  { id: 'illegal_dumping', name: 'Illegal Dumping', department: 'sanitation', severity: 9 },
+  { id: 'fallen_tree', name: 'Fallen Tree', department: 'administration', severity: 8 },
+  { id: 'hanging_wire', name: 'Hanging Wire', department: 'electrical', severity: 9 },
+  { id: 'park_broken_equipment', name: 'Park Broken Equipment', department: 'administration', severity: 6 },
+  { id: 'public_bench_broken', name: 'Public Bench Broken', department: 'administration', severity: 4 },
+];
+
+const ALLOWED_ISSUE_TYPE_SET = new Set(ISSUE_OPTIONS.map((option) => option.id));
+
+function formatIssueType(issueType: string | null | undefined) {
+  if (!issueType) return 'Unknown';
+  return issueType.replace(/_/g, ' ');
+}
+
+function getPendingComplaintCode() {
+  const year = new Date().getFullYear();
+  return `CMP-${year}-PENDING`;
+}
+
 let DefaultIcon = L.icon({
   iconUrl: markerIcon,
   shadowUrl: markerShadow,
@@ -47,17 +71,9 @@ export default function ReportIssue() {
   const [complaintId, setComplaintId] = useState<string | null>(null);
   const [isDuplicate, setIsDuplicate] = useState(false);
   const [description, setDescription] = useState("");
-  const [manualCategory, setManualCategory] = useState<string | null>(null);
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-
-  const categories = [
-    { id: 'garbage', name: t('garbage'), department: 'sanitation', severity: 6 },
-    { id: 'pothole', name: t('pothole'), department: 'road', severity: 7 },
-    { id: 'streetlight', name: t('streetlight'), department: 'electrical', severity: 5 },
-    { id: 'water', name: t('water'), department: 'water', severity: 8 },
-    { id: 'dump', name: t('dump'), department: 'sanitation', severity: 9 },
-  ];
+  const [invalidDetectionMessage, setInvalidDetectionMessage] = useState<string | null>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -78,11 +94,35 @@ export default function ReportIssue() {
           // Use a local data URL during submission.
           setUploadedImageUrl(base64);
           setIsAnalyzing(true);
-          setStep(2); // Move to AI Detection step immediately to show loading
+          setInvalidDetectionMessage(null);
+          setStep(2); // Move to detection step immediately to show loading
 
           try {
             const result = await analyzeIssueImage(base64);
-            setDetection(result);
+            const issueType = typeof result?.issueType === 'string' ? result.issueType : null;
+            const confidence = Math.max(0, Math.min(1, Number(result?.confidence) || 0));
+            const isAllowedIssue = Boolean(issueType && ALLOWED_ISSUE_TYPE_SET.has(issueType));
+            const hasValidDetection = Boolean(result?.detected) && isAllowedIssue;
+
+            if (!hasValidDetection) {
+              setDetection({
+                ...result,
+                detected: false,
+                issueType: null,
+                department: null,
+                confidence: 0,
+                description: result?.description || 'This image does not match supported civic issue categories.',
+              });
+              setInvalidDetectionMessage('Invalid image. Please attach a valid civic issue image (pothole, garbage overflow, broken streetlight, water leakage, illegal dumping, fallen tree, hanging wire, park broken equipment, public bench broken).');
+              return;
+            }
+
+            setDetection({
+              ...result,
+              issueType,
+              confidence,
+            });
+            setInvalidDetectionMessage(null);
             // Auto-detect location in background
             detectLocation();
           } catch (error) {
@@ -92,8 +132,9 @@ export default function ReportIssue() {
               confidence: 0,
               severity: 5,
               department: 'general',
-              description: 'AI analysis failed. Please select manually.'
+              description: 'Model scan failed. Please upload a clear civic issue image.'
             });
+            setInvalidDetectionMessage('Invalid image. Please attach a valid civic issue image.');
           } finally {
             setIsAnalyzing(false);
           }
@@ -152,9 +193,16 @@ export default function ReportIssue() {
       return;
     }
 
-    // 1. Generate ID client-side for instant feedback
+    const selectedType = detection?.issueType || null;
+    if (!selectedType || !ALLOWED_ISSUE_TYPE_SET.has(selectedType)) {
+      alert('Invalid image. Please attach a valid civic issue image before submitting.');
+      setStep(2);
+      return;
+    }
+
+    // 1. Keep internal ID for payload, but show structured complaint code in UI
     const reportId = globalThis.crypto?.randomUUID?.() || `report-${Date.now()}`;
-    setComplaintId(reportId);
+    setComplaintId(getPendingComplaintCode());
     
     // 2. Transition to success screen IMMEDIATELY
     setStep(5);
@@ -173,9 +221,9 @@ export default function ReportIssue() {
       try {
         const finalImageUrl = uploadedImageUrl || image || "";
 
-        const type = manualCategory || detection?.issueType || 'unknown';
+        const type = selectedType;
         const severity = isDuplicate ? 10 : (detection?.severity || 5);
-        const aiAnalysis = `Automated analysis for ${type.replace('_', ' ')}: Detected significant damage at the specified location. Severity estimated at ${severity}/10. Priority: ${severity >= 8 ? 'Critical' : 'High'}. Recommended action: Immediate dispatch of repair crew.`;
+        const aiAnalysis = `OpenCV pipeline summary for ${type.replace('_', ' ')}: Visual anomaly detected at reported location. Severity estimated at ${severity}/10. Priority: ${severity >= 8 ? 'Critical' : 'High'}.`;
 
         const reportData = {
           id: reportId,
@@ -207,8 +255,8 @@ export default function ReportIssue() {
           throw new Error(data?.message || 'Failed to submit report.');
         }
 
-        if (data?.report?.id) {
-          setComplaintId(data.report.id);
+        if (data?.report?.complaintCode) {
+          setComplaintId(data.report.complaintCode);
         }
 
         setIsSaving(false);
@@ -323,7 +371,7 @@ export default function ReportIssue() {
                     <Loader2 className="animate-spin text-blue-400 mb-6" size={64} />
                     <div className="absolute inset-0 animate-ping bg-blue-400/20 rounded-full" />
                   </div>
-                  <h3 className="text-xl font-bold mb-2">{t('step1_ai_analyzing')}</h3>
+                  <h3 className="text-lg font-bold text-center">Detecting issue...</h3>
                 </div>
               ) : (
                 renderBoundingBox()
@@ -334,45 +382,27 @@ export default function ReportIssue() {
               <div className="max-w-md mx-auto bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-xl text-left border border-slate-100 dark:border-slate-800">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <div className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Detected Issue</div>
+                    <div className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Model Detection</div>
                     <h3 className="text-2xl font-black text-slate-900 dark:text-white capitalize">
-                      {detection?.issueType?.replace('_', ' ')}
+                      {detection?.issueType ? formatIssueType(detection.issueType) : 'Invalid Image'}
                     </h3>
                   </div>
                   <div className="text-right">
-                    <div className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Confidence</div>
+                    <div className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Detection Accuracy</div>
                     <div className="text-3xl font-black text-emerald-500">
                       {Math.round((detection?.confidence || 0) * 100)}%
                     </div>
                   </div>
                 </div>
 
-                <div className="mb-4">
-                  <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                    {detection?.description || "AI has analyzed the image and identified this civic issue. Please verify the details below."}
-                  </p>
-                </div>
-
-                {detection?.confidence < 0.6 && (
-                  <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl mb-4 dark:bg-amber-900/20">
-                    <AlertCircle className="text-amber-600" size={18} />
-                    <p className="text-xs font-bold text-amber-700 dark:text-amber-400">
-                      Low confidence. Please verify or select manually.
+                {invalidDetectionMessage && (
+                  <div className="flex items-start gap-3 p-3 bg-rose-50 rounded-xl mb-4 dark:bg-rose-900/20">
+                    <AlertCircle className="text-rose-600 mt-0.5" size={18} />
+                    <p className="text-xs font-bold text-rose-700 dark:text-rose-400">
+                      {invalidDetectionMessage}
                     </p>
                   </div>
                 )}
-
-                <div className="space-y-3">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Manual Override</div>
-                  <select 
-                    className="w-full bg-slate-100 border-none rounded-xl p-3 text-sm font-bold dark:bg-slate-800 dark:text-white"
-                    value={manualCategory || detection?.issueType}
-                    onChange={(e) => setManualCategory(e.target.value)}
-                  >
-                    <option value="">Select if incorrect...</option>
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
               </div>
             )}
 
@@ -385,7 +415,7 @@ export default function ReportIssue() {
               </button>
               <button
                 onClick={() => setStep(3)}
-                disabled={isAnalyzing}
+                disabled={isAnalyzing || Boolean(invalidDetectionMessage)}
                 className="flex-[2] py-4 rounded-2xl bg-blue-600 text-white font-bold shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all disabled:opacity-50"
               >
                 {t('next_step')}
@@ -503,7 +533,7 @@ export default function ReportIssue() {
                       <TrendingUp size={16} className="text-blue-600" />
                     </div>
                     <span className="font-bold text-slate-900 dark:text-white capitalize">
-                      {manualCategory || detection?.issueType}
+                      {detection?.issueType}
                     </span>
                   </div>
                 </div>
@@ -535,7 +565,7 @@ export default function ReportIssue() {
                       <div className="font-bold text-slate-900 dark:text-white capitalize">
                         {detection?.department || 'General'} Department
                       </div>
-                      <div className="text-xs text-slate-500">Auto-routed based on AI analysis</div>
+                      <div className="text-xs text-slate-500">Auto-routed based on OpenCV model detection</div>
                     </div>
                   </div>
                   <ChevronRight className="text-slate-300" />

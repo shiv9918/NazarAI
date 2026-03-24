@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Search, Filter, Download, MoreVertical, Eye, CheckCircle, Clock, AlertTriangle, MapPin, Users, X, Calendar, Info, Maximize2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
@@ -17,6 +17,8 @@ export default function DepartmentIssueManagement() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showFullImage, setShowFullImage] = useState(false);
   const [showResolutionModal, setShowResolutionModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'all' | 'recomplaints'>('all');
+  const [searchText, setSearchText] = useState('');
 
   const convertImageToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -182,14 +184,68 @@ export default function DepartmentIssueManagement() {
     return () => clearInterval(intervalId);
   }, [user]);
 
+  const filteredIssues = useMemo(() => {
+    const search = searchText.toLowerCase().trim();
+
+    return issues.filter((issue) => {
+      const isRecomplaint = Boolean(issue.isReopened) || issue.citizenRating === 'unsatisfied';
+      if (activeTab === 'recomplaints' && !isRecomplaint) return false;
+
+      if (!search) return true;
+
+      return (
+        (issue.location || '').toLowerCase().includes(search) ||
+        (issue.id || '').toLowerCase().includes(search) ||
+        (issue.complaintCode || '').toLowerCase().includes(search)
+      );
+    });
+  }, [issues, activeTab, searchText]);
+
+  const reComplaintCount = useMemo(() => {
+    return issues.filter((issue) => Boolean(issue.isReopened) || issue.citizenRating === 'unsatisfied').length;
+  }, [issues]);
+
   return (
     <div className="space-y-6">
+      {/* Tabs */}
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <h3 className="mb-4 text-lg font-black text-slate-900 dark:text-white">Reports</h3>
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setActiveTab('all')}
+            className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-wide transition ${
+              activeTab === 'all'
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+            }`}
+          >
+            All Reports ({issues.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('recomplaints')}
+            className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-wide transition ${
+              activeTab === 'recomplaints'
+                ? 'bg-amber-600 text-white'
+                : 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50'
+            }`}
+          >
+            Re-Complaints ({reComplaintCount})
+          </button>
+          {activeTab === 'recomplaints' && (
+            <div className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+              These reports were rated "NAHI" by citizens. Re-assess and reassign as needed.
+            </div>
+          )}
+        </div>
+
       {/* Header Actions */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="relative flex-1 min-w-[300px]">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input
             type="text"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
             placeholder="Search by ID, location, or department..."
             className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-3 pl-12 pr-4 text-sm text-slate-900 dark:text-white focus:border-blue-500 focus:outline-none"
           />
@@ -205,6 +261,7 @@ export default function DepartmentIssueManagement() {
           </button>
         </div>
       </div>
+      </div>
 
       {/* Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -215,11 +272,11 @@ export default function DepartmentIssueManagement() {
             </div>
             <p className="mt-4 text-slate-500 dark:text-slate-400 font-medium">Loading issues...</p>
           </div>
-        ) : issues.length === 0 ? (
+        ) : filteredIssues.length === 0 ? (
           <div className="col-span-full py-20 text-center bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800">
             <p className="text-slate-500 dark:text-slate-400 font-medium">No issues found matching your criteria.</p>
           </div>
-        ) : issues.map((issue) => (
+        ) : filteredIssues.map((issue) => (
           <motion.div
             key={issue.id}
             initial={{ opacity: 0, scale: 0.95 }}
@@ -259,7 +316,7 @@ export default function DepartmentIssueManagement() {
             {/* Content Section */}
             <div className="p-6">
               <div className="flex items-start justify-between mb-4">
-                <div>
+                <div className="flex-1">
                   <h3 className="text-lg font-black text-slate-900 dark:text-white mb-1 line-clamp-1">
                     {issue.type.replace('_', ' ').toUpperCase()} #{issue.id.slice(-6)}
                   </h3>
@@ -276,6 +333,12 @@ export default function DepartmentIssueManagement() {
                   {issue.status === 'resolved' ? <CheckCircle size={20} /> : <Clock size={20} />}
                 </div>
               </div>
+
+              {issue.isReopened && (
+                <div className="mb-3 rounded-lg bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-900/50 px-3 py-2 text-xs font-black uppercase text-amber-700 dark:text-amber-300">
+                  ⚠️ Reopen by Citizen - Re-assess needed
+                </div>
+              )}
 
               <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-2">
@@ -352,14 +415,14 @@ export default function DepartmentIssueManagement() {
                       </p>
                     </div>
 
-                    {/* AI Analysis Section */}
+                    {/* Model Analysis Section */}
                     <div className="p-6 rounded-3xl bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100/50 dark:border-blue-800/20">
                       <div className="flex items-center gap-2 mb-3">
                         <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-                        <h5 className="text-xs font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">AI Analysis</h5>
+                        <h5 className="text-xs font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">OpenCV Model Summary</h5>
                       </div>
                       <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed font-medium italic">
-                        {selectedIssue.aiDescription || "AI is analyzing this issue... Based on initial visual data, this appears to be a significant infrastructure concern requiring immediate attention. Recommended priority: High."}
+                        {selectedIssue.aiDescription || "OpenCV model review indicates this is a significant infrastructure concern requiring priority attention."}
                       </p>
                     </div>
                   </div>
@@ -383,6 +446,24 @@ export default function DepartmentIssueManagement() {
                         {selectedIssue.status === 'resolved' ? t('resolved') : selectedIssue.status === 'in_progress' ? t('in_progress') : t('pending')}
                       </div>
                     </div>
+
+                    {selectedIssue.isReopened && (
+                      <div className="mt-6 p-4 rounded-3xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 space-y-3">
+                        <div className="flex items-start gap-3">
+                          <div className="text-2xl">⚠️</div>
+                          <div>
+                            <h5 className="text-sm font-black text-amber-900 dark:text-amber-200 uppercase tracking-widest mb-2">Complaint Reopened by Citizen</h5>
+                            <div className="space-y-2 text-sm text-amber-800 dark:text-amber-300">
+                              <p><span className="font-bold">Original Department:</span> {selectedIssue.originalDepartment || 'Unknown'}</p>
+                              <p><span className="font-bold">Reopened Status:</span> {selectedIssue.isReopened ? '✗ Not Satisfied' : '✓ Satisfied'}</p>
+                              {selectedIssue.citizenFeedback && (
+                                <p><span className="font-bold">Citizen Feedback:</span> {selectedIssue.citizenFeedback}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="space-y-4">
                       <div className="flex items-start gap-4 p-4 rounded-2xl bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100/50 dark:border-blue-800/20">
@@ -426,6 +507,21 @@ export default function DepartmentIssueManagement() {
                           <h6 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{t('department')}</h6>
                           <p className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
                             {selectedIssue.department}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+                        <div className="p-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400">
+                          <Info size={20} />
+                        </div>
+                        <div>
+                          <h6 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Citizen Contact</h6>
+                          <p className="text-sm font-bold text-slate-900 dark:text-white">
+                            {selectedIssue.citizenName || 'Unknown Citizen'}
+                          </p>
+                          <p className="text-xs font-medium text-slate-600 dark:text-slate-300 mt-1">
+                            Mobile: {selectedIssue.citizenPhone || '-'}
                           </p>
                         </div>
                       </div>

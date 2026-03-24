@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Shield, Mail, Lock, ArrowRight, Loader2, Eye, ArrowLeft, CheckCircle, AlertCircle } from 'lucide-react';
+import { User, Shield, Mail, Lock, ArrowRight, Loader2, Eye, ArrowLeft, CheckCircle, AlertCircle, Phone } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -13,6 +13,7 @@ interface AuthResponse {
     uid: string;
     name: string;
     email: string;
+    phone?: string;
     role: 'citizen' | 'municipal' | 'department' | 'admin';
     avatar: string;
     points?: number;
@@ -44,6 +45,7 @@ export default function Login() {
   const [selectedDept, setSelectedDept] = useState('');
   const [view, setView] = useState<'login' | 'forgot' | 'signup'>('login');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -77,6 +79,7 @@ export default function Login() {
       const response = await postAuth<AuthResponse>('/api/auth/login', {
         email,
         password,
+        phone: phone.trim() || null,
         portalRole: activeTab,
         department: activeTab === 'department' ? selectedDept : null,
       });
@@ -130,6 +133,7 @@ export default function Login() {
         firstName,
         lastName,
         email,
+        phone: phone.trim() || null,
         password,
         role,
         department: role === 'department' ? selectedDept : null,
@@ -300,6 +304,21 @@ export default function Login() {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder={activeTab === 'citizen' ? "citizen@delhi.gov.in" : "admin@mcd.gov.in"}
+                        className="w-full rounded-2xl border-none bg-slate-50 py-4.5 pl-12 pr-4 text-slate-900 ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500 transition-all outline-none dark:bg-slate-800 dark:text-white dark:ring-slate-700 dark:focus:ring-blue-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-400 ml-1 dark:text-slate-500">Mobile Number</label>
+                    <div className="relative group">
+                      <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors dark:text-slate-500 dark:group-focus-within:text-blue-400" size={20} />
+                      <input
+                        type="tel"
+                        required
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="+91XXXXXXXXXX"
                         className="w-full rounded-2xl border-none bg-slate-50 py-4.5 pl-12 pr-4 text-slate-900 ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500 transition-all outline-none dark:bg-slate-800 dark:text-white dark:ring-slate-700 dark:focus:ring-blue-400"
                       />
                     </div>
@@ -530,6 +549,17 @@ export default function Login() {
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
+                        className="w-full rounded-2xl border-none bg-slate-50 py-4 px-4 text-slate-900 ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500 transition-all outline-none dark:bg-slate-800 dark:text-white dark:ring-slate-700 dark:focus:ring-blue-400"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold uppercase tracking-wider text-slate-400 ml-1 dark:text-slate-500">Mobile Number</label>
+                      <input
+                        type="tel"
+                        required
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="+91XXXXXXXXXX"
                         className="w-full rounded-2xl border-none bg-slate-50 py-4 px-4 text-slate-900 ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500 transition-all outline-none dark:bg-slate-800 dark:text-white dark:ring-slate-700 dark:focus:ring-blue-400"
                       />
                     </div>

@@ -23,7 +23,7 @@ export default function DashboardLayout() {
   const portalName = isDept ? 'Department Portal' : 'Admin Portal';
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden dark:bg-slate-950">
+    <div className="flex min-h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950">
       {/* Sidebar for Desktop */}
       <aside className="w-64 border-r border-slate-200 bg-white hidden lg:flex flex-col dark:border-slate-800 dark:bg-slate-950">
         <div className="p-6 border-b border-slate-100 dark:border-slate-800">
@@ -51,7 +51,7 @@ export default function DashboardLayout() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 flex flex-col">
         {/* Top Header */}
         <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-8 dark:border-slate-800 dark:bg-slate-950">
           <div className="flex items-center gap-4">
@@ -68,7 +68,7 @@ export default function DashboardLayout() {
         </header>
 
         {/* Scrollable Area */}
-        <div className="flex-1 overflow-y-auto p-8">
+        <div className="flex-1 p-8">
           <div className="mb-6">
             <WeatherAlert />
           </div>

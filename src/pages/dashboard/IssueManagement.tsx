@@ -61,6 +61,7 @@ export default function IssueManagement() {
     const matchesSearch = searchText === '' ||
       issue.location?.toLowerCase().includes(searchText.toLowerCase()) ||
       issue.id?.toString().includes(searchText) ||
+      issue.complaintCode?.toLowerCase().includes(searchText.toLowerCase()) ||
       issue.type?.toLowerCase().includes(searchText.toLowerCase());
 
     const matchesDepartment = departmentFilter === 'all' || issue.department === departmentFilter;
@@ -222,7 +223,7 @@ export default function IssueManagement() {
                   className="cursor-pointer border-b border-slate-100 text-sm hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/30"
                   onClick={() => openIssueModal(issue)}
                 >
-                  <td className="px-3 py-3 font-bold text-slate-800 dark:text-slate-200">#{issue.id.slice(-8)}</td>
+                  <td className="px-3 py-3 font-bold text-slate-800 dark:text-slate-200">{issue.complaintCode || issue.id}</td>
                   <td className="px-3 py-3 capitalize text-slate-700 dark:text-slate-300">{issue.type.replace(/_/g, ' ')}</td>
                   <td className="px-3 py-3 text-slate-600 dark:text-slate-400">{issue.location}</td>
                   <td className="px-3 py-3">
@@ -303,7 +304,10 @@ export default function IssueManagement() {
                       <div>{selectedIssue.description || 'No description provided'}</div>
                     </div>
                     <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                      ID: {selectedIssue.id} | Reporter: {selectedIssue.citizenName || '-'}
+                      ID: {selectedIssue.complaintCode || selectedIssue.id} | Reporter: {selectedIssue.citizenName || '-'}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      Mobile: {selectedIssue.citizenPhone || '-'}
                     </div>
                   </div>
 
@@ -326,6 +330,8 @@ export default function IssueManagement() {
                       <div className="text-slate-500 dark:text-slate-400">{selectedIssue.ward || 'No ward specified'}</div>
                       <div className="text-slate-500 dark:text-slate-400">Severity: {selectedIssue.severity}</div>
                       <div className="text-slate-500 dark:text-slate-400">Created: {formatDateTime(selectedIssue.reportedAt)}</div>
+                      <div className="text-slate-500 dark:text-slate-400">Citizen: {selectedIssue.citizenName || '-'}</div>
+                      <div className="text-slate-500 dark:text-slate-400">Citizen Mobile: {selectedIssue.citizenPhone || '-'}</div>
                     </div>
                   </div>
 

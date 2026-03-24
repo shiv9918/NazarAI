@@ -32,9 +32,9 @@ export default function App() {
           <Router>
             <AuthProvider>
               <LanguageProvider>
-                <div className="min-h-screen bg-slate-50 font-sans text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-50">
+                <div className="min-h-screen flex flex-col bg-slate-50 font-sans text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-50">
                   <Navbar />
-                  <main>
+                  <main className="flex-1">
                     <Suspense fallback={<div className="flex h-screen items-center justify-center bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-50">Loading...</div>}>
                       <Routes>
                         <Route path="/" element={<Home />} />
