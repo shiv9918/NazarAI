@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { MapPin, CheckCircle2, Loader2, AlertCircle, TrendingUp, Upload, Camera, ChevronRight, Map as MapIcon, Info, ShieldAlert } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import imageCompression from 'browser-image-compression';
 import { getAddressFromCoords, getCurrentPosition } from '../utils/location';
@@ -30,6 +31,44 @@ const ISSUE_OPTIONS = [
 ];
 
 const ALLOWED_ISSUE_TYPE_SET = new Set(ISSUE_OPTIONS.map((option) => option.id));
+
+const ISSUE_TYPE_NORMALIZATION: Record<string, string> = {
+  pothole: 'pothole',
+  garbage: 'garbage_overflow',
+  garbage_overflow: 'garbage_overflow',
+  road: 'pothole',
+  streetlight: 'broken_streetlight',
+  broken_streetlight: 'broken_streetlight',
+  water: 'water_leakage',
+  leakage: 'water_leakage',
+  water_leakage: 'water_leakage',
+  illegal_dumping: 'illegal_dumping',
+  dumping: 'illegal_dumping',
+  fallen_tree: 'fallen_tree',
+  tree: 'fallen_tree',
+  hanging_wire: 'hanging_wire',
+  wire: 'hanging_wire',
+  park_broken_equipment: 'park_broken_equipment',
+  bench_broken: 'public_bench_broken',
+  public_bench_broken: 'public_bench_broken',
+};
+
+function normalizeIssueType(issueType?: string | null): string | null {
+  if (!issueType) return null;
+  const normalized = issueType.trim().toLowerCase().replace(/\s+/g, '_');
+  if (ISSUE_TYPE_NORMALIZATION[normalized]) return ISSUE_TYPE_NORMALIZATION[normalized];
+  // fallback by contains words
+  if (normalized.includes('pothole')) return 'pothole';
+  if (normalized.includes('garbage')) return 'garbage_overflow';
+  if (normalized.includes('streetlight')) return 'broken_streetlight';
+  if (normalized.includes('water')) return 'water_leakage';
+  if (normalized.includes('dump')) return 'illegal_dumping';
+  if (normalized.includes('tree')) return 'fallen_tree';
+  if (normalized.includes('wire')) return 'hanging_wire';
+  if (normalized.includes('bench')) return 'public_bench_broken';
+
+  return null;
+}
 
 function formatIssueType(issueType: string | null | undefined) {
   if (!issueType) return 'Unknown';
@@ -63,6 +102,7 @@ export default function ReportIssue() {
   const { t } = useTranslation();
   const { theme } = useTheme();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [detection, setDetection] = useState<any>(null);
   const [location, setLocation] = useState<any>(null);
@@ -99,10 +139,17 @@ export default function ReportIssue() {
 
           try {
             const result = await analyzeIssueImage(base64);
-            const issueType = typeof result?.issueType === 'string' ? result.issueType : null;
+            let issueType = typeof result?.issueType === 'string' ? normalizeIssueType(result.issueType) : null;
             const confidence = Math.max(0, Math.min(1, Number(result?.confidence) || 0));
+
+            if (!issueType && result?.detected && typeof result?.issueType === 'string') {
+              // keep original for debugging
+              issueType = normalizeIssueType(result.issueType);
+            }
+
             const isAllowedIssue = Boolean(issueType && ALLOWED_ISSUE_TYPE_SET.has(issueType));
-            const hasValidDetection = Boolean(result?.detected) && isAllowedIssue;
+            // Accept normalized issue type even if API's detected flag is missing/false.
+            const hasValidDetection = isAllowedIssue;
 
             if (!hasValidDetection) {
               setDetection({
@@ -690,14 +737,14 @@ export default function ReportIssue() {
                       </>
                     )}
                   </div>
-                  <button className="text-xs font-bold text-blue-400 hover:underline">Track Progress</button>
+                  {/* <button className="text-xs font-bold text-blue-400 hover:underline">Track Progress</button> */}
                 </div>
               </div>
             </div>
 
             <div className="mt-12 space-y-4">
               <button
-                onClick={() => window.location.href = '/'}
+                onClick={() => navigate('/citizen-dashboard')}
                 className="w-full py-5 rounded-2xl bg-slate-100 text-slate-900 font-black hover:bg-slate-200 transition-all dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700"
               >
                 {t('back_to_home')}

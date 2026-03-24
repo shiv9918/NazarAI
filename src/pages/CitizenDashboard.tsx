@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { List, CheckCircle, Clock, AlertTriangle, Eye, ArrowRight, MapPin, Award, LogOut, ThumbsUp, RotateCcw, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { List, CheckCircle, Clock, AlertTriangle, Eye, ArrowRight, MapPin, Award, LogOut, ThumbsUp, RotateCcw, X, ImageIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
@@ -46,6 +46,7 @@ export default function CitizenDashboard() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<any>(null);
   const { user } = useAuth();
+  const [selectedReport, setSelectedReport] = useState<any>(null);
   const [feedbackModal, setFeedbackModal] = useState<{ isOpen: boolean; reportId: string | null; isSatisfied: boolean }>({
     isOpen: false,
     reportId: null,
@@ -176,7 +177,7 @@ export default function CitizenDashboard() {
     };
 
     fetchReports();
-    const intervalId = setInterval(fetchReports, 10000);
+    const intervalId = setInterval(fetchReports, 30000);
 
     return () => {
       isMounted = false;
@@ -262,10 +263,10 @@ export default function CitizenDashboard() {
                       </div>
                     )}
                   </div>
-                    <Link to={`/track?id=${report.id}`} className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all dark:bg-slate-800 dark:text-slate-500 dark:hover:text-blue-400 dark:hover:bg-blue-900/20">
+                    <button onClick={() => setSelectedReport(report)} className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all dark:bg-slate-800 dark:text-slate-500 dark:hover:text-blue-400 dark:hover:bg-blue-900/20">
                       <span className="text-xs font-bold uppercase tracking-wider">Details</span>
                       <ArrowRight size={16} />
-                  </Link>
+                    </button>
                 </motion.div>
               ))}
             </div>
@@ -277,7 +278,7 @@ export default function CitizenDashboard() {
         </div>
 
         {/* Sidebar (Impact Stats) */}
-        <div className="space-y-8">
+        {/* <div className="space-y-8">
           {!loading && stats ? (
             <div className="bg-slate-900 p-8 rounded-[2rem] text-white shadow-xl dark:bg-slate-900 dark:border dark:border-slate-800">
               <h3 className="text-xl font-bold mb-6">Your Impact</h3>
@@ -330,8 +331,85 @@ export default function CitizenDashboard() {
               </div>
             </div>
           )}
-        </div>
+        </div> */}
       </div>
+
+      {/* Issue Details Modal */}
+      <AnimatePresence>
+        {selectedReport && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, y: 18, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 14, scale: 0.96 }}
+              className="relative max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+            >
+              <button
+                className="absolute right-4 top-4 rounded-full bg-slate-100 p-2 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                onClick={() => setSelectedReport(null)}
+              >
+                <X size={18} />
+              </button>
+
+              <div className="space-y-6">
+                <div className="space-y-4">
+                  <div className="flex items-start justify-between">
+                    <h3 className="text-2xl font-black capitalize text-slate-900 dark:text-white">
+                      {selectedReport.type.replace(/_/g, ' ')}
+                    </h3>
+                    <span className={`text-xs font-bold uppercase px-3 py-1 rounded-full ${
+                      selectedReport.status === 'resolved' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' :
+                      selectedReport.status === 'in_progress' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' :
+                      'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                    }`}>
+                      {selectedReport.status === 'resolved' ? 'Resolved' : selectedReport.status === 'in_progress' ? 'In Progress' : 'Reported'}
+                    </span>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+                    {selectedReport.imageUrl ? (
+                      <img src={selectedReport.imageUrl} alt="Complaint" className="h-56 w-full rounded-xl object-cover" />
+                    ) : (
+                      <div className="flex h-56 items-center justify-center rounded-xl border border-dashed border-slate-300 text-slate-400 dark:border-slate-700">
+                        <ImageIcon size={24} />
+                      </div>
+                    )}
+                    <div className="mt-3 text-sm text-slate-700 dark:text-slate-300">
+                      <div className="font-bold">Description</div>
+                      <div>{selectedReport.description || 'No description provided'}</div>
+                    </div>
+                    <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                      ID: {selectedReport.complaintCode || selectedReport.id}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+                    <div className="mb-3 text-sm font-bold text-slate-800 dark:text-slate-200">Complaint Details</div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                        <MapPin size={14} /> {selectedReport.location}
+                      </div>
+                      <div className="text-slate-500 dark:text-slate-400">Department: {selectedReport.department ? selectedReport.department.charAt(0).toUpperCase() + selectedReport.department.slice(1) : 'Not assigned'}</div>
+                      <div className="text-slate-500 dark:text-slate-400">Severity: {selectedReport.severity || 'Not specified'}</div>
+                      <div className="text-slate-500 dark:text-slate-400">Reported: {selectedReport.reportedAt ? new Date(selectedReport.reportedAt).toLocaleString('en-IN') : 'N/A'}</div>
+                    </div>
+                  </div>
+
+                  {selectedReport.status === 'resolved' && selectedReport.proofImageUrl && (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/30 dark:bg-emerald-950/20">
+                      <div className="mb-3 text-sm font-bold text-emerald-900 dark:text-emerald-200">Resolution Proof</div>
+                      <img src={selectedReport.proofImageUrl} alt="Resolution proof" className="h-40 w-full rounded-xl object-cover" />
+                      <div className="mt-2 text-xs text-emerald-700 dark:text-emerald-400">
+                        Resolved on {selectedReport.resolvedAt ? new Date(selectedReport.resolvedAt).toLocaleDateString('en-IN') : 'N/A'}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Recomplain Feedback Modal */}
       {feedbackModal.isOpen && (

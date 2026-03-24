@@ -117,7 +117,7 @@ export default function TrackIssue() {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="text-xs font-bold text-slate-400 uppercase tracking-widest dark:text-slate-500">{t('complaint_id')}</div>
-                <div className="text-2xl font-black text-slate-900 dark:text-white">{complaint.id}</div>
+                <div className="text-2xl font-black text-slate-900 dark:text-white">{complaint.complaintCode || complaint.id}</div>
               </div>
               <div className="rounded-full bg-blue-50 px-4 py-2 text-sm font-bold text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
                 {complaint.status === 'resolved'

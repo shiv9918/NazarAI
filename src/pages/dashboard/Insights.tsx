@@ -161,7 +161,7 @@ export default function Insights() {
     };
 
     fetchReports();
-    const intervalId = setInterval(fetchReports, 8000);
+    const intervalId = setInterval(fetchReports, 30000);
 
     return () => {
       isMounted = false;
