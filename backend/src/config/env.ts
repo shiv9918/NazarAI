@@ -48,6 +48,7 @@ export const env = {
   databaseUrl: normalizeDatabaseUrl(process.env.DATABASE_URL),
   corsOrigins: normalizeCorsOrigins(process.env.CORS_ORIGINS),
   geminiApiKey: process.env.GEMINI_API_KEY,
+  geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   twilioAccountSid: process.env.TWILIO_ACCOUNT_SID,
   twilioAuthToken: process.env.TWILIO_AUTH_TOKEN,
   twilioWhatsappNumber: process.env.TWILIO_WHATSAPP_NUMBER,

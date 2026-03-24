@@ -1,8 +1,58 @@
+
+export async function handleReopenedComplaintDetailedFeedback(params: {
+  citizenId: string;
+  bodyText: string;
+}): Promise<{ handled: boolean; message?: string }> {
+  // Look for recent reopened complaint (is_reopened = true, feedback status = unsatisfied)
+  const reopenedResult = await pool.query<{
+    id: string;
+    complaint_code: string;
+  }>(
+    `SELECT 
+      r.id,
+      'CMP-' || TO_CHAR(r.reported_at, 'YYYY') || '-' || 
+      LPAD(COALESCE(r.complaint_number, 0)::text, 6, '0') AS complaint_code
+     FROM reports r
+     WHERE r.citizen_id = $1
+       AND r.is_reopened = TRUE
+       AND r.citizen_feedback LIKE '%विस्तृत प्रतिक्रिया की प्रतीक्षा में%'
+       AND r.updated_at > NOW() - INTERVAL '4 hours'
+     ORDER BY r.updated_at DESC
+     LIMIT 1`,
+    [params.citizenId]
+  );
+
+  const reopened = reopenedResult.rows[0];
+  if (!reopened) {
+    return { handled: false };
+  }
+
+  // If text is meaningful (more than 5 chars), store as feedback
+  const textLength = params.bodyText.trim().length;
+  if (textLength < 5) {
+    return { handled: false };
+  }
+
+  // Update feedback with detailed explanation
+  await pool.query(
+    `UPDATE reports
+     SET citizen_feedback = $2,
+         updated_at = NOW()
+     WHERE id = $1`,
+    [reopened.id, `विस्तृत प्रतिक्रिया: ${params.bodyText.trim()}`]
+  );
+
+  return {
+    handled: true,
+    message: `✅ *आपकी प्रतिक्रिया दर्ज हो गई*\n\n📝 आपकी जानकारी:\n"${params.bodyText.trim()}"\n\n👷 प्रशासन की टीम इसे देखेगी और जल्द से जल्द समाधान करेगी।\n\nधन्यवाद! 🙏`,
+  };
+}
 import { pool } from '../config/db';
 import { sendTwilioWhatsAppMessage } from './twilioWhatsapp';
 
 type ResolutionWhatsappRow = {
   id: string;
+  complaint_code: string;
   type: string;
   location: string;
   department: string;
@@ -18,6 +68,7 @@ type ResolutionWhatsappRow = {
 
 type PendingFeedbackRow = {
   report_id: string;
+  complaint_code: string;
   citizen_id: string;
   to_phone: string;
   status: 'pending' | 'satisfied' | 'unsatisfied';
@@ -65,12 +116,6 @@ function formatDuration(from: Date, to: Date) {
   return `${hours} hour${hours === 1 ? '' : 's'}`;
 }
 
-function complaintDisplayId(reportId: string) {
-  const short = reportId.replace(/-/g, '').slice(-8).toUpperCase();
-  const year = new Date().getFullYear();
-  return `NAZ-${year}-${short}`;
-}
-
 async function upsertPendingFeedback(params: { reportId: string; citizenId: string; toPhone: string }) {
   await pool.query(
     `INSERT INTO whatsapp_feedback_requests (
@@ -100,24 +145,57 @@ async function upsertPendingFeedback(params: { reportId: string; citizenId: stri
 
 function ratingPrompt(reportId: string) {
   return [
-    'Kya aap problem resolution se satisfied hain?',
-    `Complaint: #${reportId}`,
-    'Reply karein:',
-    '👍 HAAN - satisfied',
-    '👎 NAHI - not resolved',
+    '🔍 *क्या आपकी शिकायत सही से ठीक हो गई?*',
+    `शिकायत ID: #${reportId}`,
+    '',
+    'कृपया जवाब दें:',
+    '✅ हाँ — समस्या ठीक हो गई',
+    '❌ नहीं — समस्या अभी बाकी है',
   ].join('\n');
 }
 
 function reminderPrompt(reportId: string) {
   return [
-    '📊 *Feedback yaad hai?*',
+    '⏰ *समीक्षा के लिए अनुस्मारक*',
     '',
-    `Aapki shikayat #${reportId}`,
-    'resolve mark ki gayi hai.',
+    `आपकी शिकायत #${reportId}`,
+    'को समाधान के रूप में चिह्नित किया गया था।',
     '',
-    'Kya sahi se theek hua?',
-    '👍 HAAN — satisfied',
-    '👎 NAHI — not resolved',
+    'क्या समस्या पूरी तरह ठीक हो गई?',
+    '',
+    '✅ हाँ — समस्या ठीक हो गई',
+    '❌ नहीं — समस्या अभी बाकी है',
+  ].join('\n');
+}
+
+function askForReopenDetails(reportId: string) {
+  return [
+    '❌ *समस्या अभी बाकी है?*',
+    `शिकायत ID: #${reportId}`,
+    '',
+    'कृपया बताएं कि क्या समस्या अभी भी है:',
+    '',
+    '📝 उदाहरण:',
+    '"गड्ढा अभी भी मौजूद है"',
+    '"स्ट्रीट लाइट अभी भी बंद है"',
+    '"पानी का रिसाव अभी जारी है"',
+    '',
+    'आपकी सटीक समस्या लिखें:',
+  ].join('\n');
+}
+
+function getReopenConfirmationMessage(reportId: string, hindiIssue: string) {
+  return [
+    '🔄 *आपकी शिकायत फिर से खोली गई है*',
+    ``,
+    `शिकायत ID: #${reportId}`,
+    `समस्या: ${hindiIssue}`,
+    '',
+    'आपकी प्रतिक्रिया के अनुसार यह समस्या पूरी तरह ठीक नहीं हुई है।',
+    '',
+    '👷 प्रशासन द्वारा इसका पुनः मूल्यांकन किया जाएगा।',
+    '',
+    'हम जल्द ही आपको अपडेट देंगे। धन्यवाद! 🙏',
   ].join('\n');
 }
 
@@ -125,6 +203,12 @@ export async function sendResolvedWhatsappNotificationWithFeedback(reportId: str
   const result = await pool.query<ResolutionWhatsappRow>(
     `SELECT
       r.id,
+      (
+        'CMP-'
+        || TO_CHAR(COALESCE(r.reported_at, NOW()), 'YYYY')
+        || '-'
+        || LPAD(COALESCE(r.complaint_number, 0)::text, 6, '0')
+      ) AS complaint_code,
       r.type,
       r.location,
       r.department,
@@ -155,13 +239,13 @@ export async function sendResolvedWhatsappNotificationWithFeedback(reportId: str
   const hindiIssue = issueTypeToHindi(report.type);
 
   const details = [
-    'Shikayat update:',
-    `📋 *ID:* #${complaintDisplayId(report.id)}`,
-    `🔍 *Issue:* ${hindiIssue}`,
-    `📍 *Location:* ${report.location}`,
-    `👷 *Officer:* ${officerName}`,
-    `⏱️ *Time taken:* ${timeTaken}`,
-    report.resolution_notes ? `📝 *Resolution notes:* ${report.resolution_notes}` : null,
+    '✅ *Aapki Sikayat Samadhan Kar Di Gyi Hai*',
+    `📋 ID: #${report.complaint_code}`,
+    `🔧 Samadhan: ${hindiIssue}`,
+    `📍 Jagah: ${report.location}`,
+    `👷 Officer: ${officerName}`,
+    `⏱️  Samay Laga: ${timeTaken}`,
+    report.resolution_notes ? `📝 Vivaran: ${report.resolution_notes}` : null,
   ]
     .filter(Boolean)
     .join('\n');
@@ -182,7 +266,7 @@ export async function sendResolvedWhatsappNotificationWithFeedback(reportId: str
 
   await sendTwilioWhatsAppMessage({
     to,
-    message: ratingPrompt(complaintDisplayId(report.id)),
+    message: ratingPrompt(report.complaint_code),
   });
 
   await upsertPendingFeedback({
@@ -195,8 +279,8 @@ export async function sendResolvedWhatsappNotificationWithFeedback(reportId: str
 function parseFeedbackChoice(message: string): 'satisfied' | 'unsatisfied' | null {
   const text = message.toLowerCase();
 
-  const yesPatterns = ['haan', 'ha', 'yes', 'satisfied', '👍'];
-  const noPatterns = ['nahi', 'nahin', 'no', 'unsatisfied', 'not resolved', '👎'];
+  const yesPatterns = ['haan', 'ha', 'yes', 'satisfied', 'हाँ', 'है', '👍'];
+  const noPatterns = ['nahi', 'nahin', 'no', 'unsatisfied', 'not resolved', 'नहीं', '👎'];
 
   if (yesPatterns.some((token) => text.includes(token))) {
     return 'satisfied';
@@ -217,6 +301,12 @@ export async function handleIncomingResolutionFeedback(params: {
   const pending = await pool.query<PendingFeedbackRow>(
     `SELECT
       w.report_id,
+      (
+        'CMP-'
+        || TO_CHAR(COALESCE(r.reported_at, NOW()), 'YYYY')
+        || '-'
+        || LPAD(COALESCE(r.complaint_number, 0)::text, 6, '0')
+      ) AS complaint_code,
       w.citizen_id,
       w.to_phone,
       w.status,
@@ -249,7 +339,7 @@ export async function handleIncomingResolutionFeedback(params: {
            citizen_feedback = $2,
            updated_at = NOW()
        WHERE id = $1`,
-      [row.report_id, params.bodyText.trim() || null]
+      [row.report_id, 'समस्या पूरी तरह ठीक हो गई।']
     );
 
     await pool.query(
@@ -261,20 +351,44 @@ export async function handleIncomingResolutionFeedback(params: {
 
     return {
       handled: true as const,
-      message: `Dhanyavaad! Complaint #${complaintDisplayId(row.report_id)} ko closed maana gaya hai.`,
+      message: `🎉 *धन्यवाद!*\n\nआपकी शिकायत #${row.complaint_code} को समाधान के रूप में चिह्नित कर दिया गया है।\n\nनज़र एआई के साथ जुड़े रहें! 🙏`,
     };
   }
 
+  // Ask citizen what exactly wasn't fixed
+  const deptResult = await pool.query<{ department: string }>(
+    `SELECT department FROM reports WHERE id = $1 LIMIT 1`,
+    [row.report_id]
+  );
+  const originalDept = deptResult.rows[0]?.department || 'unknown';
+  
+  // Send message asking for specific details about what wasn't fixed
+  const issueResult = await pool.query<{ type: string }>(
+    `SELECT type FROM reports WHERE id = $1 LIMIT 1`,
+    [row.report_id]
+  );
+  const issueType = issueResult.rows[0]?.type || 'problem';
+  const hindiIssue = issueTypeToHindi(issueType);
+
+  // Send message asking for feedback about what's still wrong
+  await sendTwilioWhatsAppMessage({
+    to: ensureWhatsappTo(params.fromPhone),
+    message: askForReopenDetails(row.complaint_code),
+  });
+
+  // Mark as reopened, store original dept, route to administration for review
   await pool.query(
     `UPDATE reports
-     SET status = 'in_progress',
+     SET status = 'reported',
          is_reopened = TRUE,
+         original_department = $2,
+         department = 'administration',
          reopen_votes = COALESCE(reopen_votes, 0) + 1,
          citizen_rating = 'unsatisfied',
-         citizen_feedback = $2,
+         citizen_feedback = $3,
          updated_at = NOW()
      WHERE id = $1`,
-    [row.report_id, params.bodyText.trim() || null]
+    [row.report_id, originalDept, `नागरिक प्रतिक्रिया - नहीं: शिकायत पुनः खुली (विस्तृत प्रतिक्रिया की प्रतीक्षा में)`]
   );
 
   await pool.query(
@@ -286,26 +400,41 @@ export async function handleIncomingResolutionFeedback(params: {
 
   return {
     handled: true as const,
-    message: `Complaint #${complaintDisplayId(row.report_id)} reopen kar diya gaya hai. Team isko dobara process karegi.`,
+    message: 'नागरिक से विस्तृत प्रतिक्रिया की अपेक्षा है।',
   };
 }
 
 export async function sendPendingFeedbackReminders() {
   const dueRows = await pool.query<PendingFeedbackRow>(
-    `SELECT report_id, citizen_id, to_phone, status, reminder_sent, due_at, NULL::text as resolution_notes
+    `SELECT
+      w.report_id,
+      (
+        'CMP-'
+        || TO_CHAR(COALESCE(r.reported_at, NOW()), 'YYYY')
+        || '-'
+        || LPAD(COALESCE(r.complaint_number, 0)::text, 6, '0')
+      ) AS complaint_code,
+      w.citizen_id,
+      w.to_phone,
+      w.status,
+      w.reminder_sent,
+      w.due_at,
+      NULL::text as resolution_notes
      FROM whatsapp_feedback_requests
-     WHERE status = 'pending'
-       AND reminder_sent = FALSE
-       AND due_at <= NOW()
-     ORDER BY due_at ASC
+     w
+     JOIN reports r ON r.id = w.report_id
+     WHERE w.status = 'pending'
+       AND w.reminder_sent = FALSE
+       AND w.due_at <= NOW()
+     ORDER BY w.due_at ASC
      LIMIT 200`
   );
 
   for (const row of dueRows.rows) {
     await sendTwilioWhatsAppMessage({
       to: row.to_phone,
-      message: reminderPrompt(complaintDisplayId(row.report_id)),
-    });
+      message: reminderPrompt(row.complaint_code),
+    });  
 
     await pool.query(
       `UPDATE whatsapp_feedback_requests

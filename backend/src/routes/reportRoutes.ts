@@ -11,6 +11,7 @@ type DbUser = {
   first_name: string;
   last_name: string;
   email: string;
+  phone: string | null;
   role: UserRole;
   department: string | null;
 };
@@ -66,9 +67,28 @@ const updateReportSchema = z.object({
   isEmergency: z.boolean().optional(),
 });
 
+const allowedIssueTypes = new Set([
+  'pothole',
+  'garbage_overflow',
+  'broken_streetlight',
+  'water_leakage',
+  'illegal_dumping',
+  'fallen_tree',
+  'hanging_wire',
+  'park_broken_equipment',
+  'public_bench_broken',
+]);
+
 
 const selectReportProjection = `
   id,
+  complaint_number AS "complaintNumber",
+  (
+    'CMP-'
+    || TO_CHAR(COALESCE(reported_at, NOW()), 'YYYY')
+    || '-'
+    || LPAD(COALESCE(complaint_number, 0)::text, 6, '0')
+  ) AS "complaintCode",
   type,
   severity,
   lat,
@@ -76,6 +96,7 @@ const selectReportProjection = `
   location,
   ward,
   department,
+  original_department AS "originalDepartment",
   description,
   image_url AS "imageUrl",
   is_duplicate AS "isDuplicate",
@@ -95,6 +116,7 @@ const selectReportProjection = `
   citizen_id AS "citizenId",
   citizen_name AS "citizenName",
   citizen_email AS "citizenEmail",
+  citizen_phone AS "citizenPhone",
   ai_description AS "aiDescription"
 `;
 
@@ -110,7 +132,7 @@ function isValidResolutionNotes(value: string | null | undefined) {
 
 async function getCurrentUser(userId: string) {
   const result = await pool.query<DbUser>(
-    `SELECT id, first_name, last_name, email, role, department
+    `SELECT id, first_name, last_name, email, phone, role, department
      FROM users
      WHERE id = $1
      LIMIT 1`,
@@ -140,6 +162,13 @@ router.post('/', async (req, res) => {
   }
 
   const report = parsed.data;
+  if (!allowedIssueTypes.has(report.type)) {
+    return res.status(400).json({
+      message:
+        'Invalid image category. Please upload a valid civic issue image (pothole, garbage overflow, broken streetlight, water leakage, illegal dumping, fallen tree, hanging wire, park broken equipment, public bench broken).',
+    });
+  }
+
   const assignedDepartment = assignDepartment(report.type, report.department);
   const citizenName = `${currentUser.first_name} ${currentUser.last_name}`.trim();
 
@@ -162,6 +191,7 @@ router.post('/', async (req, res) => {
       citizen_id,
       citizen_name,
       citizen_email,
+      citizen_phone,
       ai_description
     )
     VALUES (
@@ -182,7 +212,8 @@ router.post('/', async (req, res) => {
       $13,
       $14,
       $15,
-      $16
+      $16,
+      $17
     )
     RETURNING
       ${selectReportProjection}`,
@@ -202,6 +233,7 @@ router.post('/', async (req, res) => {
       currentUser.id,
       citizenName,
       currentUser.email,
+      currentUser.phone,
       report.aiDescription ?? null,
     ]
   );
@@ -562,6 +594,141 @@ router.patch('/:id/status', async (req, res) => {
   }
 
   return res.json({ report: updated.rows[0] });
+});
+
+// Reassign reopened complaint from admin to department
+router.post('/:id/reassign', async (req, res) => {
+  const parsed = z.object({
+    department: z.string().trim().min(1),
+    notes: z.string().trim().optional().nullable(),
+  }).safeParse(req.body);
+
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Invalid reassignment payload.' });
+  }
+
+  const currentUser = await getCurrentUser(req.auth!.uid);
+  if (!currentUser) {
+    return res.status(401).json({ message: 'Invalid user session.' });
+  }
+
+  // Only admin/municipal can reassign
+  if (currentUser.role !== 'admin' && currentUser.role !== 'municipal') {
+    return res.status(403).json({ message: 'Only admin can reassign complaints.' });
+  }
+
+  const reportResult = await pool.query<{ id: string; is_reopened: boolean; citizen_feedback: string | null }>(
+    `SELECT id, is_reopened, citizen_feedback FROM reports WHERE id = $1 LIMIT 1`,
+    [req.params.id]
+  );
+
+  if (!reportResult.rowCount || !reportResult.rows[0]?.is_reopened) {
+    return res.status(404).json({ message: 'Reopened report not found.' });
+  }
+
+  const normalizedDept = normalizeDepartment(parsed.data.department);
+  if (!normalizedDept || !validDepartments.has(normalizedDept)) {
+    return res.status(400).json({ message: 'Invalid department value.' });
+  }
+
+  // Reassign to department with admin notes
+  const updated = await pool.query(
+    `UPDATE reports
+     SET department = $1,
+         resolution_notes = CASE WHEN $2::text IS NOT NULL
+           THEN COALESCE(resolution_notes, '') || '\\n[ADMIN NOTE] ' || $2
+           ELSE resolution_notes
+         END,
+         updated_at = NOW()
+     WHERE id = $3
+     RETURNING ${selectReportProjection}`,
+    [normalizedDept, parsed.data.notes || null, req.params.id]
+  );
+
+  return res.json({ report: updated.rows[0] });
+});
+
+// Submit satisfaction feedback on resolved report
+router.post('/:id/satisfaction', async (req, res) => {
+  const parsed = z.object({
+    satisfied: z.boolean(),
+    feedback: z.string().trim().optional().default(''),
+  }).safeParse(req.body);
+
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Invalid satisfaction payload.' });
+  }
+
+  const currentUser = await getCurrentUser(req.auth!.uid);
+  if (!currentUser) {
+    return res.status(401).json({ message: 'Invalid user session.' });
+  }
+
+  if (currentUser.role !== 'citizen') {
+    return res.status(403).json({ message: 'Only citizens can submit satisfaction feedback.' });
+  }
+
+  const reportResult = await pool.query<{
+    id: string;
+    citizen_id: string;
+    status: string;
+    type: string;
+    department: string;
+  }>(
+    `SELECT id, citizen_id, status, type, department FROM reports WHERE id = $1 LIMIT 1`,
+    [req.params.id]
+  );
+
+  if (!reportResult.rowCount) {
+    return res.status(404).json({ message: 'Report not found.' });
+  }
+
+  const report = reportResult.rows[0];
+
+  // Verify this is the citizen's report
+  if (report.citizen_id !== currentUser.id) {
+    return res.status(403).json({ message: 'You can only provide feedback on your own reports.' });
+  }
+
+  // Verify report is resolved
+  if (report.status !== 'resolved') {
+    return res.status(400).json({ message: 'Can only provide feedback on resolved reports.' });
+  }
+
+  if (parsed.data.satisfied) {
+    // Mark as satisfied
+    const updated = await pool.query(
+      `UPDATE reports
+       SET citizen_feedback = 'SATISFIED',
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING ${selectReportProjection}`,
+      [req.params.id]
+    );
+    return res.json({ report: updated.rows[0], message: 'Thank you for your feedback!' });
+  } else {
+    // Reopen the complaint
+    if (!parsed.data.feedback || parsed.data.feedback.length < 10) {
+      return res.status(400).json({ message: 'Please provide detailed feedback about what remains unresolved (at least 10 characters).' });
+    }
+
+    const updated = await pool.query(
+      `UPDATE reports
+       SET status = 'reported',
+           is_reopened = TRUE,
+           citizen_feedback = $1,
+           department = 'administration',
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING ${selectReportProjection}`,
+      [parsed.data.feedback, req.params.id]
+    );
+
+    return res.json({
+      report: updated.rows[0],
+      message: 'Your complaint has been reopened and escalated to administration for reassessment.',
+    });
+  }
 });
 
 export default router;

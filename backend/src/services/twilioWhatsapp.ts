@@ -30,6 +30,11 @@ export async function sendTwilioWhatsAppMessage(params: {
   const authHeader = getTwilioAuthHeader();
   const fromNumber = getTwilioWhatsappFromNumber();
   if (!authHeader || !fromNumber || !env.twilioAccountSid) {
+    console.error('[Twilio] Missing credentials or from number configuration', {
+      hasAuthHeader: Boolean(authHeader),
+      hasFromNumber: Boolean(fromNumber),
+      hasAccountSid: Boolean(env.twilioAccountSid),
+    });
     return false;
   }
 
@@ -58,5 +63,24 @@ export async function sendTwilioWhatsAppMessage(params: {
     body: form,
   });
 
-  return response.ok;
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '');
+    console.error('[Twilio] Message send failed', {
+      status: response.status,
+      statusText: response.statusText,
+      to: params.to,
+      from: fromNumber,
+      messagePreview: params.message.slice(0, 120),
+      errorPreview: errorBody.slice(0, 500),
+    });
+    return false;
+  }
+
+  console.log('[Twilio] Message sent', {
+    to: params.to,
+    messagePreview: params.message.slice(0, 100),
+    mediaCount: mediaUrls.length,
+  });
+
+  return true;
 }

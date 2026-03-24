@@ -4,7 +4,7 @@ import { env } from '../config/env';
 import { assignDepartment } from '../utils/reportAssignment';
 import { detectIssueFromImage } from '../services/geminiVision';
 import { sendTwilioWhatsAppMessage } from '../services/twilioWhatsapp';
-import { handleIncomingResolutionFeedback } from '../services/whatsappResolutionFlow';
+import { handleIncomingResolutionFeedback, handleReopenedComplaintDetailedFeedback } from '../services/whatsappResolutionFlow';
 import { reverseGeocodeCoordinates } from '../services/geocodingService';
 
 type DbCitizen = {
@@ -36,12 +36,61 @@ function xmlMessage(text: string) {
   return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${safe}</Message></Response>`;
 }
 
+function emptyXmlResponse() {
+  return '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
+}
+
+async function respondWhatsAppMessage(res: any, to: string, message: string) {
+  // Primary path: send via Twilio REST API to improve reliability for WhatsApp delivery.
+  const sent = await sendTwilioWhatsAppMessage({ to, message });
+
+  res.type('text/xml');
+  if (sent) {
+    return res.status(200).send(emptyXmlResponse());
+  }
+
+  // Fallback path: if REST send fails, return TwiML message response.
+  return res.status(200).send(xmlMessage(message));
+}
+
 function normalizePhone(raw: string) {
   return raw.replace(/[^\d+]/g, '').trim();
 }
 
 function stripWhatsappPrefix(value: string) {
   return value.startsWith('whatsapp:') ? value.slice('whatsapp:'.length) : value;
+}
+
+function toE164FromIncoming(fromRaw: string) {
+  const normalized = normalizePhone(stripWhatsappPrefix(fromRaw));
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.startsWith('+')) {
+    return normalized;
+  }
+
+  return `+${normalized}`;
+}
+
+async function syncCitizenPhoneWithIncoming(citizenId: string, fromRaw: string, existingPhone?: string | null) {
+  const incomingE164 = toE164FromIncoming(fromRaw);
+  if (!incomingE164) {
+    return;
+  }
+
+  const existingNormalized = existingPhone ? normalizePhone(existingPhone) : null;
+  if (existingNormalized === incomingE164) {
+    return;
+  }
+
+  await pool.query(
+    `UPDATE users
+     SET phone = $1, updated_at = NOW()
+     WHERE id = $2`,
+    [incomingE164, citizenId]
+  );
 }
 
 function parseCoordinatesFromBody(bodyText: string) {
@@ -134,11 +183,21 @@ async function fetchTwilioMediaAsDataUrl(mediaUrl: string): Promise<{ dataUrl: s
   }
 
   const arrayBuffer = await response.arrayBuffer();
-  const mimeType = response.headers.get('content-type') || 'image/jpeg';
+  const contentTypeHeader = response.headers.get('content-type') || 'image/jpeg';
+  const normalizedMime = contentTypeHeader.split(';')[0].trim().toLowerCase();
+  const mimeType = normalizedMime === 'image/jpg' ? 'image/jpeg' : normalizedMime;
+  const safeMimeType = mimeType.startsWith('image/') ? mimeType : 'image/jpeg';
   const base64 = Buffer.from(arrayBuffer).toString('base64');
+
+  console.log('[WhatsApp] Twilio media downloaded', {
+    contentTypeHeader,
+    safeMimeType,
+    bytes: arrayBuffer.byteLength,
+  });
+
   return {
-    dataUrl: `data:${mimeType};base64,${base64}`,
-    mimeType,
+    dataUrl: `data:${safeMimeType};base64,${base64}`,
+    mimeType: safeMimeType,
   };
 }
 
@@ -151,6 +210,46 @@ type ProcessingPayload = {
   address: string;
   citizen: DbCitizen;
 };
+
+const WHATSAPP_ALLOWED_ISSUE_TYPES = new Set([
+  'pothole',
+  'garbage_overflow',
+  'broken_streetlight',
+  'water_leakage',
+  'illegal_dumping',
+  'fallen_tree',
+  'hanging_wire',
+  'park_broken_equipment',
+  'public_bench_broken',
+]);
+
+const WHATSAPP_ISSUE_TYPE_ALIASES: Record<string, string> = {
+  garbage: 'garbage_overflow',
+  garbage_overflow: 'garbage_overflow',
+  illegal_dump: 'illegal_dumping',
+  illegal_dumping: 'illegal_dumping',
+  pothole: 'pothole',
+  broken_streetlight: 'broken_streetlight',
+  water_leakage: 'water_leakage',
+  fallen_tree: 'fallen_tree',
+  hanging_wire: 'hanging_wire',
+  park_broken_equipment: 'park_broken_equipment',
+  public_bench_broken: 'public_bench_broken',
+};
+
+function normalizeWhatsappIssueType(rawType: string | null | undefined) {
+  if (!rawType) {
+    return null;
+  }
+
+  const normalized = rawType.toLowerCase().trim().replace(/\s+/g, '_');
+  const canonical = WHATSAPP_ISSUE_TYPE_ALIASES[normalized] || normalized;
+  if (!WHATSAPP_ALLOWED_ISSUE_TYPES.has(canonical)) {
+    return null;
+  }
+
+  return canonical;
+}
 
 async function getWhatsappSession(citizenId: string, fromPhone: string) {
   const result = await pool.query<DbWhatsappSession>(
@@ -248,13 +347,33 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
     imageBase64: image.dataUrl.split(',')[1],
     mimeType: image.mimeType,
     geminiApiKey: env.geminiApiKey,
+    geminiModel: env.geminiModel,
     reportText: payload.bodyText,
   });
 
-  const assignedDepartment = assignDepartment(detection.issueType, null);
+  console.log('[WhatsApp] Gemini detection result', {
+    issueType: detection.issueType,
+    severity: detection.severity,
+    aiDescription: detection.aiDescription?.slice(0, 160),
+    mimeType: image.mimeType,
+    hasGeminiKey: Boolean(env.geminiApiKey),
+  });
+
+  const normalizedIssueType = normalizeWhatsappIssueType(detection.issueType);
+  if (!normalizedIssueType) {
+    await clearWhatsappSession(payload.citizen.id, normalizePhone(stripWhatsappPrefix(payload.from)));
+    await sendTwilioWhatsAppMessage({
+      to: payload.from,
+      message:
+        'Invalid image. Please attach a valid civic issue image only: pothole, garbage overflow, broken streetlight, water leakage, illegal dumping, fallen tree, hanging wire, park broken equipment, or public bench broken.',
+    });
+    return;
+  }
+
+  const assignedDepartment = assignDepartment(normalizedIssueType, null);
   const citizenName = `${payload.citizen.first_name} ${payload.citizen.last_name}`.trim();
 
-  const inserted = await pool.query<{ id: string }>(
+  const inserted = await pool.query<{ id: string; complaint_code: string }>(
     `INSERT INTO reports (
       type,
       severity,
@@ -271,6 +390,7 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
       citizen_id,
       citizen_name,
       citizen_email,
+      citizen_phone,
       ai_description
     )
     VALUES (
@@ -289,11 +409,19 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
       $9,
       $10,
       $11,
-      $12
+      $12,
+      $13
     )
-    RETURNING id`,
+    RETURNING
+      id,
+      (
+        'CMP-'
+        || TO_CHAR(reported_at, 'YYYY')
+        || '-'
+        || LPAD(COALESCE(complaint_number, 0)::text, 6, '0')
+      ) AS complaint_code`,
     [
-      detection.issueType,
+      normalizedIssueType,
       detection.severity,
       payload.lat,
       payload.lng,
@@ -304,15 +432,30 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
       payload.citizen.id,
       citizenName,
       payload.citizen.email,
+      payload.citizen.phone,
       detection.aiDescription,
     ]
   );
 
   const reportId = inserted.rows[0]?.id;
-  await sendTwilioWhatsAppMessage({
+  const complaintCode = inserted.rows[0]?.complaint_code || reportId;
+  const confirmationMessage = `Thanks! Your report has been registered. Complaint ID: ${complaintCode}. Issue type: ${normalizedIssueType}. Assigned department: ${assignedDepartment}. You can track progress in the Nazar AI app.`;
+  const confirmationSent = await sendTwilioWhatsAppMessage({
     to: payload.from,
-    message: `Thanks! Your report has been registered. Complaint ID: ${reportId}. Issue type: ${detection.issueType}. Assigned department: ${assignedDepartment}. You can track progress in the Nazar AI app.`,
+    message: confirmationMessage,
   });
+
+  if (!confirmationSent) {
+    console.warn('[WhatsApp] Primary confirmation failed. Retrying with shorter message.', {
+      complaintCode,
+      to: payload.from,
+    });
+
+    await sendTwilioWhatsAppMessage({
+      to: payload.from,
+      message: `Complaint registered. ID: ${complaintCode}. Type: ${normalizedIssueType}. Dept: ${assignedDepartment}.`,
+    });
+  }
 
   await clearWhatsappSession(payload.citizen.id, normalizePhone(stripWhatsappPrefix(payload.from)));
 }
@@ -334,15 +477,19 @@ router.post('/webhook', async (req, res) => {
   console.log(`[WhatsApp] Received - From: ${from}, Body: ${bodyText.substring(0, 100)}, Media: ${mediaCount}, IsLocation: ${isLocationMessage}`);
 
   if (!from) {
-    res.type('text/xml');
-    return res.status(200).send(xmlMessage('Unable to read sender number. Please retry.'));
+    return respondWhatsAppMessage(res, 'whatsapp:+0000000000', 'Unable to read sender number. Please retry.');
   }
 
   const citizen = await resolveCitizenByPhone(from);
   if (!citizen) {
-    res.type('text/xml');
-    return res.status(200).send(xmlMessage('Your number is not linked to a citizen account. Please add this WhatsApp number in Settings and try again.'));
+    return respondWhatsAppMessage(
+      res,
+      from,
+      'Your number is not linked to a citizen account. Please add this WhatsApp number in Settings and try again.'
+    );
   }
+
+  await syncCitizenPhoneWithIncoming(citizen.id, from, citizen.phone);
 
   const fromPhone = normalizePhone(stripWhatsappPrefix(from));
 
@@ -354,8 +501,17 @@ router.post('/webhook', async (req, res) => {
   });
 
   if (feedbackResult.handled) {
-    res.type('text/xml');
-    return res.status(200).send(xmlMessage(feedbackResult.message));
+    return respondWhatsAppMessage(res, from, feedbackResult.message);
+  }
+
+  // Check if this is detailed feedback for a reopened complaint
+  const detailedFeedbackResult = await handleReopenedComplaintDetailedFeedback({
+    citizenId: citizen.id,
+    bodyText,
+  });
+
+  if (detailedFeedbackResult.handled) {
+    return respondWhatsAppMessage(res, from, detailedFeedbackResult.message || 'आपकी प्रतिक्रिया दर्ज हो गई।');
   }
 
   // Get existing session to check flow state
@@ -371,8 +527,7 @@ router.post('/webhook', async (req, res) => {
       // No image, no location - user just sent text
       // This is the first message, ask them to send image
       const welcomeMsg = `📸 Welcome to Nazar AI!\n\nPlease send us:\n1. A photo of the issue\n2. A brief description (optional)\n\nExample: Send a photo of a pothole, or flooded street.`;
-      res.type('text/xml');
-      return res.status(200).send(xmlMessage(welcomeMsg));
+      return respondWhatsAppMessage(res, from, welcomeMsg);
     }
 
     if (currentMediaUrl && !isLocationMessage) {
@@ -391,12 +546,10 @@ router.post('/webhook', async (req, res) => {
       });
 
       const askLocationMsg = `✅ Got your photo and description!\n\n📍 Now please share your current location:\n1. Click the attachment button (+) in WhatsApp\n2. Select "Location"\n3. Share your live location or current location\n\nThis helps us pinpoint the exact issue location.`;
-      res.type('text/xml');
-      return res.status(200).send(xmlMessage(askLocationMsg));
+      return respondWhatsAppMessage(res, from, askLocationMsg);
     }
 
-    res.type('text/xml');
-    return res.status(200).send(xmlMessage('Thanks! Please send your photo and then your location to complete the report.'));
+    return respondWhatsAppMessage(res, from, 'Thanks! Please send your photo and then your location to complete the report.');
   }
 
   // ========== FLOW STATE: Waiting for Location ==========
@@ -407,8 +560,11 @@ router.post('/webhook', async (req, res) => {
 
     if (resolvedLat === undefined || resolvedLng === undefined) {
       // User sent text instead of location, remind them
-      res.type('text/xml');
-      return res.status(200).send(xmlMessage('Please share your current location using WhatsApp location feature (click +, select Location, then share your live location).'));
+      return respondWhatsAppMessage(
+        res,
+        from,
+        'Please share your current location using WhatsApp location feature (click +, select Location, then share your live location).'
+      );
     }
 
     // Location received! Process the report
@@ -445,13 +601,11 @@ router.post('/webhook', async (req, res) => {
       });
     });
 
-    res.type('text/xml');
-    return res.status(200).send(xmlMessage('✅ Processing your report. You will receive a confirmation with your complaint ID shortly.'));
+    return respondWhatsAppMessage(res, from, '✅ Processing your report. You will receive a confirmation with your complaint ID shortly.');
   }
 
   // Default fallback
-  res.type('text/xml');
-  return res.status(200).send(xmlMessage('Thanks! We received your message. Please follow the steps to submit your report.'));
+  return respondWhatsAppMessage(res, from, 'Thanks! We received your message. Please follow the steps to submit your report.');
 });
 
 export default router;

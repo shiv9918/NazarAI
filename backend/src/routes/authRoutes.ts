@@ -11,6 +11,7 @@ const signupSchema = z.object({
   lastName: z.string().trim().min(1),
   email: z.string().trim().email(),
   password: z.string().min(6),
+  phone: z.string().trim().min(8).max(20),
   role: z.enum(USER_ROLES).default('citizen'),
   department: z.string().trim().optional().nullable(),
 });
@@ -18,6 +19,7 @@ const signupSchema = z.object({
 const loginSchema = z.object({
   email: z.string().trim().email(),
   password: z.string().min(1),
+  phone: z.string().trim().min(8).max(20),
   portalRole: z.enum(['citizen', 'municipal', 'department']).optional(),
   department: z.string().trim().optional().nullable(),
 });
@@ -87,6 +89,7 @@ router.post('/signup', async (req, res) => {
 
   const { firstName, lastName, email, password, role } = parsed.data;
   const department = normalizeDepartment(parsed.data.department);
+  const phone = parsed.data.phone.trim();
   const normalizedEmail = email.toLowerCase();
 
   if (role === 'department' && !department) {
@@ -107,10 +110,10 @@ router.post('/signup', async (req, res) => {
   const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(`${firstName} ${lastName}`)}&background=random`;
 
   const inserted = await pool.query<UserRecord>(
-    `INSERT INTO users (first_name, last_name, email, password_hash, role, department, points, avatar)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO users (first_name, last_name, email, password_hash, role, department, points, avatar, phone)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING id, first_name, last_name, email, role, department, points, avatar, phone, location, bio, notify_issue_updates, notify_new_rewards, notify_city_alerts, preferred_theme, preferred_language, created_at, updated_at, last_login_at`,
-    [firstName, lastName, normalizedEmail, passwordHash, role, role === 'department' ? department : null, points, avatar]
+    [firstName, lastName, normalizedEmail, passwordHash, role, role === 'department' ? department : null, points, avatar, phone]
   );
 
   const user = toPublicUser(inserted.rows[0]);
@@ -126,6 +129,7 @@ router.post('/login', async (req, res) => {
   }
 
   const { email, password, portalRole } = parsed.data;
+  const requestedPhone = parsed.data.phone.trim();
   const requestedDepartment = normalizeDepartment(parsed.data.department);
   const normalizedEmail = email.toLowerCase();
 
@@ -146,6 +150,10 @@ router.post('/login', async (req, res) => {
 
   if (!validPassword) {
     return res.status(401).json({ message: 'Invalid email or password.' });
+  }
+
+  if ((record.phone || '').trim() !== requestedPhone) {
+    return res.status(401).json({ message: 'Invalid mobile number for this account.' });
   }
 
   if (!matchesPortalRole(portalRole, record.role)) {

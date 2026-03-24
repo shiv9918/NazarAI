@@ -65,6 +65,7 @@ ADD COLUMN IF NOT EXISTS preferred_language TEXT;
 
 CREATE TABLE IF NOT EXISTS reports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  complaint_number BIGINT,
   type TEXT NOT NULL,
   severity INTEGER NOT NULL CHECK (severity >= 1 AND severity <= 10),
   lat DOUBLE PRECISION NOT NULL,
@@ -85,6 +86,7 @@ CREATE TABLE IF NOT EXISTS reports (
   citizen_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   citizen_name TEXT NOT NULL,
   citizen_email TEXT NOT NULL,
+  citizen_phone TEXT,
   ai_description TEXT
 );
 
@@ -125,6 +127,33 @@ ALTER TABLE reports
 ADD COLUMN IF NOT EXISTS citizen_rating TEXT;
 
 ALTER TABLE reports
+ADD COLUMN IF NOT EXISTS complaint_number BIGINT;
+
+ALTER TABLE reports
+ADD COLUMN IF NOT EXISTS citizen_phone TEXT;
+
+UPDATE reports r
+SET citizen_phone = u.phone
+FROM users u
+WHERE r.citizen_id = u.id
+  AND r.citizen_phone IS NULL;
+
+CREATE SEQUENCE IF NOT EXISTS reports_complaint_number_seq START 1000;
+
+ALTER TABLE reports
+ALTER COLUMN complaint_number SET DEFAULT nextval('reports_complaint_number_seq');
+
+UPDATE reports
+SET complaint_number = nextval('reports_complaint_number_seq')
+WHERE complaint_number IS NULL;
+
+SELECT setval(
+  'reports_complaint_number_seq',
+  GREATEST(COALESCE((SELECT MAX(complaint_number) FROM reports), 999), 999),
+  TRUE
+);
+
+ALTER TABLE reports
 ADD COLUMN IF NOT EXISTS citizen_feedback TEXT;
 
 ALTER TABLE reports
@@ -132,6 +161,9 @@ ADD COLUMN IF NOT EXISTS reopen_votes INTEGER NOT NULL DEFAULT 0;
 
 ALTER TABLE reports
 ADD COLUMN IF NOT EXISTS is_reopened BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE reports
+ADD COLUMN IF NOT EXISTS original_department TEXT;
 
 ALTER TABLE whatsapp_sessions
 ADD COLUMN IF NOT EXISTS flow_state TEXT;
@@ -176,6 +208,7 @@ CREATE INDEX IF NOT EXISTS reports_reported_at_desc_idx ON reports (reported_at 
 CREATE INDEX IF NOT EXISTS reports_department_idx ON reports (department);
 CREATE INDEX IF NOT EXISTS reports_citizen_id_idx ON reports (citizen_id);
 CREATE INDEX IF NOT EXISTS reports_status_idx ON reports (status);
+CREATE UNIQUE INDEX IF NOT EXISTS reports_complaint_number_unique_idx ON reports (complaint_number);
 CREATE INDEX IF NOT EXISTS whatsapp_sessions_updated_at_idx ON whatsapp_sessions (updated_at DESC);
 CREATE INDEX IF NOT EXISTS whatsapp_feedback_due_at_idx ON whatsapp_feedback_requests (due_at ASC);
 CREATE INDEX IF NOT EXISTS weather_department_alerts_created_at_idx ON weather_department_alerts (created_at DESC);
