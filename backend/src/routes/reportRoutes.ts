@@ -342,12 +342,33 @@ router.get('/:id', async (req, res) => {
     return res.status(401).json({ message: 'Invalid user session.' });
   }
 
+  const rawId = String(req.params.id).trim();
+  const uuidPattern = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+  const complaintCodePattern = /^[A-Za-z]{3}-\d{4}-\d{4,6}$/;
+
+  let idQueryText = '';
+  let idQueryParams: any[] = [];
+
+  if (uuidPattern.test(rawId)) {
+    idQueryText = 'id = $1';
+    idQueryParams = [rawId];
+  } else if (complaintCodePattern.test(rawId)) {
+    const numberPart = rawId.split('-').pop();
+    idQueryText = 'complaint_number = $1';
+    idQueryParams = [Number(numberPart)];
+  } else if (/^\d+$/.test(rawId)) {
+    idQueryText = 'complaint_number = $1';
+    idQueryParams = [Number(rawId)];
+  } else {
+    return res.status(404).json({ message: 'Report not found.' });
+  }
+
   const reportResult = await pool.query<DbReport>(
     `SELECT id, department, citizen_id, status, proof_image_url, reported_at, resolution_notes
      FROM reports
-     WHERE id = $1
+     WHERE ${idQueryText}
      LIMIT 1`,
-    [req.params.id]
+    idQueryParams
   );
 
   if (!reportResult.rowCount) {
@@ -371,7 +392,7 @@ router.get('/:id', async (req, res) => {
      FROM reports
      WHERE id = $1
      LIMIT 1`,
-    [req.params.id]
+    [reportMeta.id]
   );
 
   return res.json({ report: fullReport.rows[0] });

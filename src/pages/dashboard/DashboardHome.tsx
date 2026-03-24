@@ -218,7 +218,7 @@ export default function DashboardHome() {
     };
 
     fetchReports();
-    const intervalId = setInterval(fetchReports, 8000);
+    const intervalId = setInterval(fetchReports, 30000);
 
     return () => {
       isMounted = false;

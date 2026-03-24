@@ -180,7 +180,7 @@ export default function DepartmentIssueManagement() {
   useEffect(() => {
     setLoading(true);
     fetchIssues();
-    const intervalId = setInterval(fetchIssues, 10000);
+    const intervalId = setInterval(fetchIssues, 30000);
     return () => clearInterval(intervalId);
   }, [user]);
 

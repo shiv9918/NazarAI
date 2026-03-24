@@ -1,5 +1,6 @@
 import cors from 'cors';
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { env } from './config/env';
 import { pool, testConnection } from './config/db';
 import { runMigrations } from './db/runMigrations';
@@ -24,12 +25,31 @@ async function startServer() {
   app.use(express.json({ limit: '20mb' }));
   app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
+  // Rate limiting middleware
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests per windowMs
+    message: 'Too many requests from this IP, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.use('/api/', limiter);
+
+  // Stricter rate limiting for reports (polling endpoints)
+  const reportsLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 20, // limit each IP to 20 requests per minute for reports
+    message: 'Too many report requests, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, service: 'nazarai-backend' });
   });
 
   app.use('/api/auth', authRoutes);
-  app.use('/api/reports', reportRoutes);
+  app.use('/api/reports', reportsLimiter, reportRoutes);
   app.use('/api/whatsapp', whatsappRoutes);
   app.use('/api/weather', weatherRoutes);
 
