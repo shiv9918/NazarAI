@@ -496,7 +496,7 @@ export default function DashboardHome() {
               </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-left text-sm text-slate-600 dark:text-slate-300">
+              <table className="w-full text-left text-sm text-slate-600 dark:text-slate-300">
                 <thead>
                   <tr className="border-b border-slate-200 uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
                     <th className="py-3 px-2">ID</th>
@@ -601,7 +601,7 @@ export default function DashboardHome() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-left">
+            <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-slate-200 text-xs font-black uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:text-slate-400">
                   <th className="px-3 py-3">Complaint ID</th>

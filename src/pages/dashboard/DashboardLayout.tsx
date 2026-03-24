@@ -68,11 +68,13 @@ export default function DashboardLayout() {
         </header>
 
         {/* Scrollable Area */}
-        <div className="flex-1 p-8">
-          <div className="mb-6">
-            <WeatherAlert />
+        <div className="flex-1 p-8 overflow-x-hidden">
+          <div className="mx-auto max-w-6xl">
+            <div className="mb-6">
+              <WeatherAlert />
+            </div>
+            <Outlet />
           </div>
-          <Outlet />
         </div>
       </main>
 

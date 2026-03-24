@@ -1,4 +1,3 @@
-import { Eye } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export default function Footer() {
@@ -9,11 +8,13 @@ export default function Footer() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-4">
           <div className="col-span-1 md:col-span-2">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-white">
-                <Eye size={16} />
-              </div>
-              <span className="text-base font-bold tracking-tight text-slate-900 dark:text-white">{t('app_name')}</span>
+            <div className="flex items-center gap-0">
+              <img
+                src="/logo-removebg-preview.png"
+                alt="Nazar AI Logo"
+                className="h-auto w-16 align-middle"
+              />
+              <span className="text-base font-bold tracking-tight text-slate-900 dark:text-white align-middle">{t('app_name')}</span>
             </div>
             <p className="mt-3 max-w-xs text-xs text-slate-500 dark:text-slate-400">
               {t('footer_desc')}
