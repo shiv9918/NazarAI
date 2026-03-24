@@ -197,7 +197,7 @@ export default function TrackIssue() {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex flex-col gap-4 sm:flex-row">
+          {/* <div className="flex flex-col gap-4 sm:flex-row">
             <button className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 py-4 font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-900">
               <Phone size={20} />
               {t('contact_department')}
@@ -205,7 +205,7 @@ export default function TrackIssue() {
             <button className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-rose-50 py-4 font-bold text-rose-600 hover:bg-rose-100 dark:bg-rose-900/20 dark:text-rose-400 dark:hover:bg-rose-900/40">
               {t('escalate_issue')}
             </button>
-          </div>
+          </div> */}
         </motion.div>
       )}
     </div>
