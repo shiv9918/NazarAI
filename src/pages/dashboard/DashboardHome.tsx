@@ -414,147 +414,114 @@ export default function DashboardHome() {
 
   return (
     <div className="space-y-8">
-      {emergencyReports.length > 0 && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-900/50 dark:bg-rose-950/30">
-          <div className="flex items-start gap-3">
-            <ShieldAlert className="mt-0.5 text-rose-600 dark:text-rose-400" size={20} />
-            <div>
-              <div className="text-sm font-black uppercase tracking-wide text-rose-700 dark:text-rose-300">Emergency Alert</div>
-              <div className="text-sm font-semibold text-rose-700 dark:text-rose-300">
-                {emergencyReports[0].type.replace(/_/g, ' ')} at {emergencyReports[0].location}
-              </div>
-              <div className="text-xs text-rose-600 dark:text-rose-400">
-                ID: {emergencyReports[0].id} | Severity: {emergencyReports[0].severity} | Status: {statusLabel(emergencyReports[0].status, t)}
-              </div>
-            </div>
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-black text-slate-900 dark:text-slate-100">Commissioner Dashboard — Delhi</h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} — Live</p>
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-full bg-green-100 px-4 py-2 text-sm font-bold text-green-700 dark:bg-green-900/30 dark:text-green-300">
+            <span className="h-2.5 w-2.5 rounded-full bg-green-600 animate-pulse" />
+            Live
           </div>
         </div>
-      )}
+      </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Total Reports</div>
-          <div className="mt-2 text-3xl font-black text-slate-900 dark:text-white">{stats.totalReports}</div>
+          <div className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Total Complaints Today</div>
+          <div className="mt-2 text-4xl font-black text-slate-900 dark:text-white">{stats.totalReports}</div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Breached 48hr SLA</div>
+          <div className="mt-2 text-4xl font-black text-rose-600 dark:text-rose-400">{stats.pendingCritical}</div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Fake Resolution Reports</div>
+          <div className="mt-2 text-4xl font-black text-amber-600 dark:text-amber-400">{reports.filter((r) => r.isDuplicate || r.status === 'resolved' && r.severity >= 8).length}</div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Resolved Today</div>
-          <div className="mt-2 text-3xl font-black text-emerald-600 dark:text-emerald-400">{stats.resolvedToday}</div>
+          <div className="mt-2 text-4xl font-black text-emerald-600 dark:text-emerald-400">{stats.resolvedToday}</div>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Pending Critical</div>
-          <div className="mt-2 text-3xl font-black text-rose-600 dark:text-rose-400">{stats.pendingCritical}</div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className="space-y-4 xl:col-span-1">
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <h2 className="text-lg font-black text-slate-900 dark:text-white">Critical Flags</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Highest priority unresolved issues</p>
+            <div className="mt-4 space-y-3">
+              {emergencyReports.slice(0, 4).map((report) => (
+                <div key={report.id} className="rounded-xl border border-rose-200 bg-rose-50 p-3 dark:border-rose-900/40 dark:bg-rose-950/30">
+                  <p className="text-sm font-bold text-rose-700 dark:text-rose-300">{report.department.toUpperCase()} — {report.location}</p>
+                  <p className="text-xs text-rose-600 dark:text-rose-400">{report.type.replace(/_/g, ' ')} | {Math.ceil((new Date().getTime() - new Date(report.reportedAt).getTime()) / (1000 * 60 * 60))} hrs unresolved</p>
+                  <div className="mt-2 flex items-center gap-2 text-[11px] font-bold">
+                    <span className="rounded-full bg-rose-100 px-2 py-1 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">SLA Breached</span>
+                    <span className="rounded-full bg-white px-2 py-1 text-slate-700 dark:bg-slate-800 dark:text-slate-300">ID #{report.id.slice(-4)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Avg Resolution</div>
-          <div className="mt-2 text-3xl font-black text-slate-900 dark:text-white">{formatDays(stats.avgResolutionDays)}</div>
+
+        <div className="xl:col-span-2">
+          <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="space-x-1">
+                {['All', 'Overdue', 'Fake reports', 'Resolved'].map((tab) => (
+                  <button key={tab} className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">{tab}</button>
+                ))}
+              </div>
+              <div className="relative w-full max-w-sm">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input type="text" placeholder="Search for issue or location..." className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] text-left text-sm text-slate-600 dark:text-slate-300">
+                <thead>
+                  <tr className="border-b border-slate-200 uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                    <th className="py-3 px-2">ID</th>
+                    <th className="py-3 px-2">Issue</th>
+                    <th className="py-3 px-2">Department</th>
+                    <th className="py-3 px-2">Hours Elapsed</th>
+                    <th className="py-3 px-2">Assigned To</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {liveFeed.slice(0, 12).map((report) => {
+                    const hoursElapsed = Math.max(0, Math.ceil((new Date().getTime() - new Date(report.reportedAt).getTime()) / (1000 * 60 * 60)));
+                    let badgeClass = 'bg-slate-100 text-slate-700';
+                    let statusLabel = 'Pending';
+                    if (report.status === 'resolved') { badgeClass = 'bg-emerald-100 text-emerald-700'; statusLabel = 'Resolved'; }
+                    if (report.severity >= 8 && report.status !== 'resolved') { badgeClass = 'bg-rose-100 text-rose-700'; statusLabel = 'Overdue'; }
+                    if (report.isDuplicate) { badgeClass = 'bg-amber-100 text-amber-700'; statusLabel = 'Fake report'; }
+
+                    return (
+                      <tr key={report.id} className="border-b border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/30">
+                        <td className="px-2 py-3 font-bold">#{report.id.slice(-3)}</td>
+                        <td className="px-2 py-3 capitalize">{report.type.replace(/_/g, ' ')}</td>
+                        <td className="px-2 py-3 capitalize">{report.department}</td>
+                        <td className="px-2 py-3">
+                          <span className={`rounded-full px-2 py-1 text-xs font-bold ${badgeClass}`}>{statusLabel}</span>
+                        </td>
+                        <td className="px-2 py-3">{report.citizenName || 'N/A'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
 
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <h3 className="mb-4 text-lg font-black text-slate-900 dark:text-white">Issue Status</h3>
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-            <div className="relative min-w-[220px] flex-1">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Search by location or ID"
-                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Filter size={16} className="text-slate-400" />
-              <select
-                value={departmentFilter}
-                onChange={(e) => setDepartmentFilter(e.target.value)}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-              >
-                <option value="all">All Departments</option>
-                <option value="roads">Roads</option>
-                <option value="sanitation">Sanitation</option>
-                <option value="electrical">Electrical</option>
-                <option value="water">Water</option>
-                <option value="administration">Administration</option>
-              </select>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-              >
-                <option value="all">All Status</option>
-                <option value="reported">Pending</option>
-                <option value="in_progress">In Progress</option>
-                <option value="resolved">Resolved</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-left">
-              <thead>
-                <tr className="border-b border-slate-200 text-xs font-black uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                  <th className="px-3 py-3">Complaint ID</th>
-                  <th className="px-3 py-3">Issue Type</th>
-                  <th className="px-3 py-3">Location</th>
-                  <th className="px-3 py-3">Department</th>
-                  <th className="px-3 py-3">Severity</th>
-                  <th className="px-3 py-3">Status</th>
-                  <th className="px-3 py-3">Created At</th>
-                  <th className="px-3 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredReports.map((report) => (
-                  <tr
-                    key={report.id}
-                    className="cursor-pointer border-b border-slate-100 text-sm hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/30"
-                    onClick={() => openReportModal(report)}
-                  >
-                    <td className="px-3 py-3 font-bold text-slate-800 dark:text-slate-200">#{report.id.slice(-8)}</td>
-                    <td className="px-3 py-3 capitalize text-slate-700 dark:text-slate-300">{report.type.replace(/_/g, ' ')}</td>
-                    <td className="px-3 py-3 text-slate-600 dark:text-slate-400">{report.location}</td>
-                    <td className="px-3 py-3">
-                      <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                        {report.department}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3">
-                      <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${
-                        report.severity >= 8
-                          ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
-                          : report.severity >= 5
-                            ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'
-                            : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-                      }`}>
-                        {report.severity}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 font-semibold text-slate-700 dark:text-slate-300">{statusLabel(report.status, t)}</td>
-                    <td className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400">{formatDateTime(report.reportedAt)}</td>
-                    <td className="px-3 py-3 text-right">
-                      <button
-                        className="rounded-lg p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/30"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openReportModal(report);
-                        }}
-                      >
-                        <Eye size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {filteredReports.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="px-4 py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
-                      No complaints matched your filters.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <h3 className="mb-2 text-lg font-black text-slate-900 dark:text-white">Latest Complaints</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Quick snapshot of most recent reports (no detailed filters)</p>
+      </div>
 
       {/* <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -587,67 +554,6 @@ export default function DashboardHome() {
         </div>
       </div> */}
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <h3 className="mb-4 text-lg font-black text-slate-900 dark:text-white">Reports (Last 7 Days)</h3>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={reportsPerDay}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" opacity={0.3} />
-                <XAxis dataKey="day" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Line type="monotone" dataKey="reports" stroke="#2563eb" strokeWidth={3} dot={{ r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <h3 className="mb-4 text-lg font-black text-slate-900 dark:text-white">Issue Type Distribution</h3>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={issueTypeData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" opacity={0.3} />
-                <XAxis dataKey="issueType" interval={0} angle={-20} textAnchor="end" height={60} />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#0f766e" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="mb-5 flex items-center gap-2 text-lg font-black text-slate-900 dark:text-white">
-          <Building2 size={20} /> Department Performance
-        </div>
-        <div className="space-y-4">
-          {departmentPerformance.map((item) => (
-            <div key={item.department} className="rounded-2xl border border-slate-100 p-4 dark:border-slate-800">
-              <div className="mb-2 flex items-center justify-between">
-                <div className="text-sm font-bold uppercase tracking-wide text-slate-800 dark:text-slate-200">
-                  {item.department}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-sm font-black ${item.color.text}`}>{item.percent}%</span>
-                  {item.escalated && (
-                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black uppercase text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
-                      escalated
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-                <div className={`h-full ${item.color.bar}`} style={{ width: `${Math.max(3, item.percent)}%` }} />
-              </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                Resolved {item.resolved} / Assigned {item.assigned}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
 
       <AnimatePresence>
         {selectedReport && modalForm && (

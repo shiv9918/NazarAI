@@ -108,9 +108,9 @@ export default function Home() {
               <p className="mt-2 text-sm text-slate-500">Meet your city leaders and service coordinators.</p>
               <div className="mt-4 space-y-3">
                 {[
-                  { name: 'Hon. Bansi Joshi', title: 'City Municipal Commissioner', phone: '9876543210' },
-                  { name: 'Dr. Meera Sharma', title: 'Chief Officer, Public Works', phone: '9887766550' },
-                  { name: 'Eliza Rodriguez', title: 'Citizen Relation Head', phone: '9812345670' }
+                  { name: 'Hon. Bansi Joshi', title: 'City Municipal Commissioner', phone: '98******10' },
+                  { name: 'Dr. Meera Sharma', title: 'Chief Officer, Public Works', phone: '98******50' },
+                  { name: 'Eliza Rodriguez', title: 'Citizen Relation Head', phone: '98******70' }
                 ].map((person, i) => (
                   <div key={i} className="rounded-xl border border-slate-100 p-3">
                     <div className="text-sm font-semibold text-slate-900">{person.name}</div>
@@ -211,6 +211,83 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* How it Works workflow section */}
+      <section className="bg-white py-16">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-4xl font-extrabold text-slate-900">How it Works</h2>
+          <p className="mt-3 text-lg text-slate-500">Seamless integration between citizens and municipal authorities.</p>
+        </div>
+
+        <div className="mx-auto mt-10 grid max-w-7xl grid-cols-1 gap-6 px-4 sm:px-6 lg:grid-cols-5 lg:gap-4 lg:px-8">
+          {[
+            { icon: Zap, title: 'Citizen Report', description: 'Upload photo & location' },
+            { icon: Shield, title: 'AI Detection', description: 'Auto-categorize & score' },
+            { icon: TrendingUp, title: 'Severity Scoring', description: 'Prioritize critical issues' },
+            { icon: User, title: 'Dept Routing', description: 'Assign to relevant team' },
+            { icon: CheckCircle, title: 'Resolution', description: 'Track & verify fix' }
+          ].map((step, idx) => (
+            <div key={idx} className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-blue-500 bg-white text-blue-600">
+                <step.icon size={24} />
+              </div>
+              <h3 className="mt-4 text-xl font-bold text-slate-900">{step.title}</h3>
+              <p className="mt-2 text-sm text-slate-500">{step.description}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Citizen Reviews section */}
+      <section className="bg-slate-50 py-16">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="text-center">
+            <h2 className="text-4xl font-extrabold text-slate-900">Citizen Reviews</h2>
+            <p className="mt-2 text-lg text-slate-500">Real feedback from our community members.</p>
+          </div>
+
+          <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              {
+                name: 'Aditi Sharma',
+                role: 'Resident, North Delhi',
+                pic: 'https://randomuser.me/api/portraits/women/45.jpg',
+                review: 'Reporting potholes is now incredibly easy, and responses come fast. The city is improving daily!'
+              },
+              {
+                name: 'Rahul Verma',
+                role: 'Local shopkeeper',
+                pic: 'https://randomuser.me/api/portraits/men/32.jpg',
+                review: 'The issue tracking is very transparent. I love seeing the status updates in real time.'
+              },
+              {
+                name: 'Nisha Jain',
+                role: 'College student',
+                pic: 'https://randomuser.me/api/portraits/women/68.jpg',
+                review: 'AI categorization saved so much time. Problems are assigned to the right department almost instantly.'
+              }
+            ].map((item, idx) => (
+              <article key={idx} className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-lg transition hover:-translate-y-1 hover:shadow-2xl">
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-500 opacity-0 transition group-hover:opacity-100"></div>
+                <div className="flex items-center gap-4">
+                  <img src={item.pic} alt={`${item.name} avatar`} className="h-14 w-14 rounded-full object-cover ring-2 ring-blue-500" />
+                  <div>
+                    <div className="text-sm font-bold text-slate-900">{item.name}</div>
+                    <div className="text-xs text-slate-500">{item.role}</div>
+                  </div>
+                </div>
+                <p className="mt-4 text-slate-700">“{item.review}”</p>
+                <div className="mt-5 flex items-center gap-1 text-amber-500">
+                  {[1,2,3,4,5].map(star => (
+                    <span key={star} className="text-lg">★</span>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
     </div>
   );
 }

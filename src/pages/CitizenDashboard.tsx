@@ -157,120 +157,63 @@ export default function CitizenDashboard() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Reports List */}
-        <div className="lg:col-span-2 space-y-6">
+      <div className="space-y-6">
+        <div>
           <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2 dark:text-white">
             <List size={20} className="text-blue-600 dark:text-blue-400" />
             My Recent Reports
           </h3>
-          
-          {loading ? (
-            <div className="flex justify-center py-12">
-              <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full dark:border-blue-400 dark:border-t-transparent"></div>
-            </div>
-          ) : reports.length > 0 ? (
-            <div className="space-y-4">
-              {reports.map((report) => (
-                <motion.div 
-                  key={report.id}
-                  whileHover={{ scale: 1.01 }}
-                  className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col sm:flex-row gap-6 items-start sm:items-center dark:bg-slate-900 dark:border-slate-800"
-                >
-                  <div className="h-20 w-20 rounded-2xl overflow-hidden flex-shrink-0">
-                    <img src={report.imageUrl || `https://picsum.photos/seed/${report.type}-${report.id}/80/80`} alt="Issue" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-widest dark:text-slate-500">#{report.id.slice(-6)}</span>
-                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                        report.status === 'resolved' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' :
-                        report.status === 'in_progress' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' :
-                        'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                      }`}>
-                        {report.status === 'resolved' ? 'Resolved' : report.status === 'in_progress' ? 'In Progress' : 'Reported'}
-                      </span>
-                    </div>
-                    <h4 className="text-lg font-bold text-slate-900 capitalize dark:text-white">{report.type.replace(/_/g, ' ')}</h4>
-                    <div className="flex items-center gap-1 text-xs text-slate-500 mt-1 dark:text-slate-400">
-                      <MapPin size={12} />
-                      {report.location}
-                    </div>
-                    {report.status === 'resolved' && report.proofImageUrl && (
-                      <div className="mt-2 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-                        Resolution proof available in Details
-                      </div>
-                    )}
-                  </div>
-                    <Link to={`/track?id=${report.id}`} className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all dark:bg-slate-800 dark:text-slate-500 dark:hover:text-blue-400 dark:hover:bg-blue-900/20">
-                      <span className="text-xs font-bold uppercase tracking-wider">Details</span>
-                      <ArrowRight size={16} />
-                  </Link>
-                </motion.div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12 bg-white rounded-3xl border border-slate-100 dark:bg-slate-900 dark:border-slate-800">
-              <p className="text-slate-500 dark:text-slate-400">You haven't reported any issues yet.</p>
-            </div>
-          )}
         </div>
 
-        {/* Sidebar (Impact Stats) */}
-        <div className="space-y-8">
-          {!loading && stats ? (
-            <div className="bg-slate-900 p-8 rounded-[2rem] text-white shadow-xl dark:bg-slate-900 dark:border dark:border-slate-800">
-              <h3 className="text-xl font-bold mb-6">Your Impact</h3>
-              <div className="space-y-6">
-                <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-2xl bg-white/10 flex items-center justify-center text-emerald-400">
-                    <CheckCircle size={24} />
-                  </div>
-                  <div>
-                    <div className="text-2xl font-black">{stats.resolved}</div>
-                    <div className="text-xs font-bold text-slate-400 uppercase">Issues Resolved</div>
-                  </div>
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full dark:border-blue-400 dark:border-t-transparent"></div>
+          </div>
+        ) : reports.length > 0 ? (
+          <div className="space-y-4">
+            {reports.map((report) => (
+              <motion.div
+                key={report.id}
+                whileHover={{ scale: 1.01 }}
+                className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col sm:flex-row gap-6 items-start sm:items-center dark:bg-slate-900 dark:border-slate-800"
+              >
+                <div className="h-20 w-20 rounded-2xl overflow-hidden flex-shrink-0">
+                  <img src={report.imageUrl || `https://picsum.photos/seed/${report.type}-${report.id}/80/80`} alt="Issue" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-2xl bg-white/10 flex items-center justify-center text-amber-400">
-                    <Clock size={24} />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest dark:text-slate-500">#{report.id.slice(-6)}</span>
+                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                      report.status === 'resolved' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' :
+                      report.status === 'in_progress' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' :
+                      'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                    }`}>
+                      {report.status === 'resolved' ? 'Resolved' : report.status === 'in_progress' ? 'In Progress' : 'Reported'}
+                    </span>
                   </div>
-                  <div>
-                    <div className="text-2xl font-black">{stats.avgTime}</div>
-                    <div className="text-xs font-bold text-slate-400 uppercase">Avg. Resolution</div>
+                  <h4 className="text-lg font-bold text-slate-900 capitalize dark:text-white">{report.type.replace(/_/g, ' ')}</h4>
+                  <div className="flex items-center gap-1 text-xs text-slate-500 mt-1 dark:text-slate-400">
+                    <MapPin size={12} />
+                    {report.location}
                   </div>
+                  {report.status === 'resolved' && report.proofImageUrl && (
+                    <div className="mt-2 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                      Resolution proof available in Details
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-2xl bg-white/10 flex items-center justify-center text-blue-400">
-                    <Award size={24} />
-                  </div>
-                  <div>
-                    <div className="text-2xl font-black">{stats.points}</div>
-                    <div className="text-xs font-bold text-slate-400 uppercase">Total Points</div>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-8 pt-8 border-t border-white/10">
-                {stats.percentage > 0 ? (
-                  <div className="text-sm font-bold text-blue-400">
-                    You are in the top {stats.percentage}% of reporters! 🦁
-                  </div>
-                ) : (
-                  <div className="text-sm font-bold text-slate-400">
-                    Start reporting issues to earn your spot on the leaderboard
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="bg-slate-900 p-8 rounded-[2rem] text-white shadow-xl">
-              <h3 className="text-xl font-bold mb-6">Your Impact</h3>
-              <div className="flex justify-center py-8">
-                <div className="animate-spin h-6 w-6 border-2 border-blue-600 border-t-transparent rounded-full"></div>
-              </div>
-            </div>
-          )}
-        </div>
+                <Link to={`/track?id=${report.id}`} className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all dark:bg-slate-800 dark:text-slate-500 dark:hover:text-blue-400 dark:hover:bg-blue-900/20">
+                  <span className="text-xs font-bold uppercase tracking-wider">Details</span>
+                  <ArrowRight size={16} />
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12 bg-white rounded-3xl border border-slate-100 dark:bg-slate-900 dark:border-slate-800">
+            <p className="text-slate-500 dark:text-slate-400">You haven't reported any issues yet.</p>
+          </div>
+        )}
       </div>
     </div>
   );
