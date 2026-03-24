@@ -19,7 +19,6 @@ const signupSchema = z.object({
 const loginSchema = z.object({
   email: z.string().trim().email(),
   password: z.string().min(1),
-  phone: z.string().trim().min(8).max(20),
   portalRole: z.enum(['citizen', 'municipal', 'department']).optional(),
   department: z.string().trim().optional().nullable(),
 });
@@ -129,7 +128,6 @@ router.post('/login', async (req, res) => {
   }
 
   const { email, password, portalRole } = parsed.data;
-  const requestedPhone = parsed.data.phone.trim();
   const requestedDepartment = normalizeDepartment(parsed.data.department);
   const normalizedEmail = email.toLowerCase();
 
@@ -150,10 +148,6 @@ router.post('/login', async (req, res) => {
 
   if (!validPassword) {
     return res.status(401).json({ message: 'Invalid email or password.' });
-  }
-
-  if ((record.phone || '').trim() !== requestedPhone) {
-    return res.status(401).json({ message: 'Invalid mobile number for this account.' });
   }
 
   if (!matchesPortalRole(portalRole, record.role)) {
