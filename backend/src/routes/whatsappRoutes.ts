@@ -364,8 +364,7 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
     await clearWhatsappSession(payload.citizen.id, normalizePhone(stripWhatsappPrefix(payload.from)));
     await sendTwilioWhatsAppMessage({
       to: payload.from,
-      message:
-        'Invalid image. Please attach a valid civic issue image only: pothole, garbage overflow, broken streetlight, water leakage, illegal dumping, fallen tree, hanging wire, park broken equipment, or public bench broken.',
+      message: 'This is not a civic issue. Please add a valid issue.',
     });
     return;
   }
@@ -439,7 +438,9 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
 
   const reportId = inserted.rows[0]?.id;
   const complaintCode = inserted.rows[0]?.complaint_code || reportId;
-  const confirmationMessage = `Thanks! Your report has been registered. Complaint ID: ${complaintCode}. Issue type: ${normalizedIssueType}. Assigned department: ${assignedDepartment}. You can track progress in the Nazar AI app.`;
+  const trackBaseUrl = env.frontendBaseUrl.replace(/\/$/, '');
+  const trackUrl = `${trackBaseUrl}/track?id=${encodeURIComponent(complaintCode || '')}`;
+  const confirmationMessage = `Thanks! Your report has been registered. Complaint ID: ${complaintCode}. Issue type: ${normalizedIssueType}. Assigned department: ${assignedDepartment}. Track your report: ${trackUrl}`;
   const confirmationSent = await sendTwilioWhatsAppMessage({
     to: payload.from,
     message: confirmationMessage,

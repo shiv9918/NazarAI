@@ -54,6 +54,7 @@ export const env = {
   jwtSecret: process.env.JWT_SECRET || 'change-me-in-production',
   databaseUrl: normalizeDatabaseUrl(process.env.DATABASE_URL),
   corsOrigins: normalizeCorsOrigins(process.env.CORS_ORIGINS),
+  frontendBaseUrl: process.env.FRONTEND_BASE_URL || 'http://localhost:5173',
   geminiApiKey: process.env.GEMINI_API_KEY,
   geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   twilioAccountSid: process.env.TWILIO_ACCOUNT_SID,
