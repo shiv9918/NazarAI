@@ -46,6 +46,7 @@ export default function CitizenDashboard() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<any>(null);
   const { user } = useAuth();
+  const displayName = user?.name?.trim() || 'Citizen';
   const [selectedReport, setSelectedReport] = useState<any>(null);
   const [feedbackModal, setFeedbackModal] = useState<{ isOpen: boolean; reportId: string | null; isSatisfied: boolean }>({
     isOpen: false,
@@ -200,7 +201,7 @@ export default function CitizenDashboard() {
     <div className="space-y-12">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{t('citizen_dashboard.welcome', { name: user?.firstName || 'Citizen' })}</h1>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{t('citizen_dashboard.welcome', { name: displayName })}</h1>
           <p className="text-slate-600 mt-1 dark:text-slate-400">{t('citizen_dashboard.subtitle')}</p>
         </div>
         <div className="flex items-center gap-4">
