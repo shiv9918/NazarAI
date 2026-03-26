@@ -12,9 +12,8 @@ export default function Footer() {
               <img
                 src="/logo-removebg-preview.png"
                 alt="Nazar AI Logo"
-                className="h-auto w-16 align-middle"
+                className="h-auto w-24"
               />
-              <span className="text-base font-bold tracking-tight text-slate-900 dark:text-white align-middle">{t('app_name')}</span>
             </div>
             <p className="mt-3 max-w-xs text-xs text-slate-500 dark:text-slate-400">
               {t('footer_desc')}

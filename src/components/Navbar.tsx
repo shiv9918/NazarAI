@@ -50,9 +50,8 @@ export default function Navbar() {
             <img
               src="/logo-removebg-preview.png"
               alt="Nazar AI Logo"
-              className=" w-20 "
+              className="w-28"
             />
-            <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white align-middle">{t('app_name')}</span>
           </Link>
 
           {/* Desktop Nav */}
