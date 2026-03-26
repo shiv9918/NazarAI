@@ -326,7 +326,7 @@ export default function Insights() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-        <motion.div whileHover={{ y: -5 }} className="rounded-[2rem] bg-blue-600 p-7 text-white shadow-xl shadow-blue-200 dark:shadow-none">
+        <motion.div whileHover={{ y: -5 }} className="rounded-[2rem] bg-white dark:bg-slate-900 p-7 text-slate-900 dark:text-white shadow-xl border border-slate-100 dark:border-slate-800">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 mb-5">
             <ListChecks size={24} />
           </div>
@@ -335,7 +335,8 @@ export default function Insights() {
           <div className="mt-3 text-xs font-medium opacity-80">All reports stored in database</div>
         </motion.div>
 
-        <motion.div whileHover={{ y: -5 }} className="rounded-[2rem] bg-emerald-600 p-7 text-white shadow-xl shadow-emerald-200 dark:shadow-none">
+        <motion.div whileHover={{ y: -5 }} className="rounded-[2rem] bg-white p-7 text-black shadow-xl  dark:shadow-none">
+        {/* Removed extra <motion.div> */}
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 mb-5">
             <CheckCircle2 size={24} />
           </div>
@@ -344,7 +345,8 @@ export default function Insights() {
           <div className="mt-3 text-xs font-medium opacity-80">Resolved in current day window</div>
         </motion.div>
 
-        <motion.div whileHover={{ y: -5 }} className="rounded-[2rem] bg-rose-600 p-7 text-white shadow-xl shadow-rose-200 dark:shadow-none">
+        <motion.div whileHover={{ y: -5 }} className="rounded-[2rem] bg-white p-7 text-black shadow-xl  dark:shadow-none">
+        {/* Removed extra <motion.div> */}
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 mb-5">
             <AlertTriangle size={24} />
           </div>
@@ -353,7 +355,8 @@ export default function Insights() {
           <div className="mt-3 text-xs font-medium opacity-80">Severity 8+ not resolved</div>
         </motion.div>
 
-        <motion.div whileHover={{ y: -5 }} className="rounded-[2rem] bg-slate-900 p-7 text-white shadow-xl border border-slate-800">
+        <motion.div whileHover={{ y: -5 }} className="rounded-[2rem] bg-white p-7 text-black shadow-xl ">
+        {/* Removed extra <motion.div> */}
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 mb-5">
             <Clock3 size={24} />
           </div>
@@ -452,7 +455,7 @@ export default function Insights() {
                   </div>
                 </div>
 
-                {dept.slaPercent < 40 && (
+                {/* {dept.slaPercent < 40 && (
                   <div className="mt-8 p-5 rounded-2xl bg-rose-50 dark:bg-rose-900/30 border border-rose-100 dark:border-rose-800 flex items-center justify-between">
                     <div className="flex items-center gap-4 text-rose-600 dark:text-rose-400">
                       <AlertTriangle size={24} />
@@ -460,7 +463,7 @@ export default function Insights() {
                     </div>
                     <span className="text-xs font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest">Needs immediate action</span>
                   </div>
-                )}
+                )} */}
               </motion.div>
             );
           })}

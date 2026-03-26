@@ -509,7 +509,7 @@ export default function ReportIssue() {
               )}
             </div>
 
-            {location && (
+            {/* {location && (
               <div className="bg-white/90 backdrop-blur-md dark:bg-slate-900/90 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 flex items-center gap-4 mb-6">
                 <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center dark:bg-blue-900/20">
                   <MapPin className="text-blue-600" size={24} />
@@ -524,7 +524,7 @@ export default function ReportIssue() {
                   </div>
                 </div>
               </div>
-            )}
+            )} */}
 
             <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 text-left mb-8">
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Manual Address Fallback</div>
