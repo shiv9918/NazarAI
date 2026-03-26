@@ -7,6 +7,14 @@ export type SmsSendResult = {
   providerMessage?: string;
 };
 
+export type WhatsAppSendResult = {
+  ok: boolean;
+  internalReason?: 'MISSING_TWILIO_CONFIG' | 'TWILIO_RATE_LIMITED' | 'TWILIO_REQUEST_FAILED';
+  httpStatus?: number;
+  providerCode?: number;
+  providerMessage?: string;
+};
+
 function getTwilioAuthHeader() {
   if (!env.twilioAccountSid || !env.twilioAuthToken) {
     return null;
@@ -67,12 +75,12 @@ function normalizeSmsToNumber(raw: string) {
   return `+${digits}`;
 }
 
-export async function sendTwilioWhatsAppMessage(params: {
+export async function sendTwilioWhatsAppMessageDetailed(params: {
   to: string;
   message: string;
   mediaUrl?: string | null;
   mediaUrls?: string[];
-}) {
+}): Promise<WhatsAppSendResult> {
   const authHeader = getTwilioAuthHeader();
   const fromNumber = getTwilioWhatsappFromNumber();
   if (!authHeader || !fromNumber || !env.twilioAccountSid) {
@@ -81,7 +89,10 @@ export async function sendTwilioWhatsAppMessage(params: {
       hasFromNumber: Boolean(fromNumber),
       hasAccountSid: Boolean(env.twilioAccountSid),
     });
-    return false;
+    return {
+      ok: false,
+      internalReason: 'MISSING_TWILIO_CONFIG',
+    };
   }
 
   const endpoint = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(env.twilioAccountSid)}/Messages.json`;
@@ -111,15 +122,36 @@ export async function sendTwilioWhatsAppMessage(params: {
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => '');
+    let providerCode: number | undefined;
+    let providerMessage: string | undefined;
+
+    try {
+      const parsed = JSON.parse(errorBody) as { code?: number; message?: string };
+      providerCode = parsed.code;
+      providerMessage = parsed.message;
+    } catch {
+      providerMessage = errorBody.slice(0, 300);
+    }
+
+    const isRateLimited = response.status === 429 || providerCode === 20429;
+
     console.error('[Twilio] Message send failed', {
       status: response.status,
       statusText: response.statusText,
       to: params.to,
       from: fromNumber,
       messagePreview: params.message.slice(0, 120),
+      providerCode,
+      providerMessage,
       errorPreview: errorBody.slice(0, 500),
     });
-    return false;
+    return {
+      ok: false,
+      internalReason: isRateLimited ? 'TWILIO_RATE_LIMITED' : 'TWILIO_REQUEST_FAILED',
+      httpStatus: response.status,
+      providerCode,
+      providerMessage,
+    };
   }
 
   console.log('[Twilio] Message sent', {
@@ -128,7 +160,17 @@ export async function sendTwilioWhatsAppMessage(params: {
     mediaCount: mediaUrls.length,
   });
 
-  return true;
+  return { ok: true };
+}
+
+export async function sendTwilioWhatsAppMessage(params: {
+  to: string;
+  message: string;
+  mediaUrl?: string | null;
+  mediaUrls?: string[];
+}) {
+  const result = await sendTwilioWhatsAppMessageDetailed(params);
+  return result.ok;
 }
 
 export async function sendTwilioSmsMessage(params: {

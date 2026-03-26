@@ -92,7 +92,17 @@ async function startServer() {
   });
 
   app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, service: 'nazarai-backend' });
+    res.json({
+      ok: true,
+      service: 'nazarai-backend',
+      runtime: {
+        hasGeminiKey: Boolean(env.geminiApiKey),
+        geminiModel: env.geminiModel,
+        hasTwilioSid: Boolean(env.twilioAccountSid),
+        hasTwilioAuthToken: Boolean(env.twilioAuthToken),
+        hasTwilioWhatsappNumber: Boolean(env.twilioWhatsappNumber),
+      },
+    });
   });
 
   app.use('/api/auth/login', authLoginLimiter);

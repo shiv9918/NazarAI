@@ -15,6 +15,14 @@ const DEFAULT_CORS_ORIGINS = [
   'http://127.0.0.1:3000',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
+  'https://nazarai.live',
+  'https://www.nazarai.live',
+  'https://admin.nazarai.live',
+  'https://dept.nazarai.live',
+  'https://nazarar.live',
+  'https://www.nazarar.live',
+  'https://admin.nazarar.live',
+  'https://dept.nazarar.live',
 ];
 
 function normalizeDatabaseUrl(rawValue: string | undefined) {
@@ -54,9 +62,12 @@ export const env = {
   jwtSecret: process.env.JWT_SECRET || 'change-me-in-production',
   databaseUrl: normalizeDatabaseUrl(process.env.DATABASE_URL),
   corsOrigins: normalizeCorsOrigins(process.env.CORS_ORIGINS),
-  frontendBaseUrl: process.env.FRONTEND_BASE_URL || 'http://localhost:5173',
+  frontendBaseUrl:
+    process.env.FRONTEND_BASE_URL
+    || (process.env.NODE_ENV === 'production' ? 'https://www.nazarai.live' : 'http://localhost:5173'),
   geminiApiKey: process.env.GEMINI_API_KEY,
   geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  whatsappTrackBaseUrl: process.env.WHATSAPP_TRACK_BASE_URL || 'https://www.nazarai.live',
   twilioAccountSid: process.env.TWILIO_ACCOUNT_SID,
   twilioAuthToken: process.env.TWILIO_AUTH_TOKEN,
   twilioSmsNumber: process.env.TWILIO_SMS_NUMBER,
