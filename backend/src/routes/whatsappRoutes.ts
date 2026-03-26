@@ -36,20 +36,9 @@ function xmlMessage(text: string) {
   return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${safe}</Message></Response>`;
 }
 
-function emptyXmlResponse() {
-  return '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
-}
-
-async function respondWhatsAppMessage(res: any, to: string, message: string) {
-  // Primary path: send via Twilio REST API to improve reliability for WhatsApp delivery.
-  const sent = await sendTwilioWhatsAppMessage({ to, message });
-
+async function respondWhatsAppMessage(res: any, _to: string, message: string) {
+  // Respond with TwiML directly so inbound WhatsApp messages always get an immediate reply.
   res.type('text/xml');
-  if (sent) {
-    return res.status(200).send(emptyXmlResponse());
-  }
-
-  // Fallback path: if REST send fails, return TwiML message response.
   return res.status(200).send(xmlMessage(message));
 }
 
