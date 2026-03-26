@@ -1,4 +1,27 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { LineChart, Line } from 'recharts';
+// Animated Counter Hook
+function useAnimatedCount(target: number, duration = 1000) {
+  const [count, setCount] = useState(0);
+  const ref = useRef<number>();
+  useEffect(() => {
+    let start = 0;
+    const step = (timestamp: number) => {
+      if (!ref.current) ref.current = timestamp;
+      const progress = Math.min((timestamp - ref.current) / duration, 1);
+      setCount(Math.floor(progress * target));
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      } else {
+        setCount(target);
+        ref.current = undefined;
+      }
+    };
+    requestAnimationFrame(step);
+    return () => { ref.current = undefined; };
+  }, [target, duration]);
+  return count;
+}
 import { motion } from 'framer-motion';
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, Clock3, Download, ListChecks, ShieldAlert } from 'lucide-react';
@@ -326,43 +349,61 @@ export default function Insights() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-        <motion.div whileHover={{ y: -5 }} className="rounded-[2rem] bg-white dark:bg-slate-900 p-7 text-slate-900 dark:text-white shadow-xl border border-slate-100 dark:border-slate-800">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 mb-5">
+
+        <motion.div whileHover={{ y: -5 }} className="rounded-[2rem] bg-gradient-to-br from-blue-100 to-blue-50 dark:from-slate-800 dark:to-slate-900 p-7 text-slate-900 dark:text-white shadow-2xl border border-blue-100 dark:border-slate-800 transition-all hover:scale-[1.03]">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-200/60 dark:bg-blue-900/40 mb-5">
             <ListChecks size={24} />
           </div>
           <div className="text-sm font-bold uppercase tracking-wider opacity-80">Total Reports</div>
-          <div className="mt-2 text-4xl font-black">{stats.totalReports}</div>
+          <div className="mt-2 text-4xl font-black">
+            {useAnimatedCount(stats.totalReports)}
+          </div>
           <div className="mt-3 text-xs font-medium opacity-80">All reports stored in database</div>
+          <div className="mt-4">
+            <LineChart width={80} height={24} data={[{v: 2},{v: 4},{v: 3},{v: 5},{v: 7},{v: stats.totalReports%10+5}]}> <Line type="monotone" dataKey="v" stroke="#2563eb" strokeWidth={2} dot={false} /></LineChart>
+          </div>
         </motion.div>
 
-        <motion.div whileHover={{ y: -5 }} className="rounded-[2rem] bg-white p-7 text-black shadow-xl  dark:shadow-none">
-        {/* Removed extra <motion.div> */}
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 mb-5">
+        <motion.div whileHover={{ y: -5 }} className="rounded-[2rem] bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-900 dark:to-slate-900 p-7 text-slate-900 dark:text-white shadow-2xl border border-emerald-100 dark:border-emerald-900 transition-all hover:scale-[1.03]">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-200/60 dark:bg-emerald-900/40 mb-5">
             <CheckCircle2 size={24} />
           </div>
           <div className="text-sm font-bold uppercase tracking-wider opacity-80">Resolved Today</div>
-          <div className="mt-2 text-4xl font-black">{stats.resolvedToday}</div>
+          <div className="mt-2 text-4xl font-black">
+            {useAnimatedCount(stats.resolvedToday)}
+          </div>
           <div className="mt-3 text-xs font-medium opacity-80">Resolved in current day window</div>
+          <div className="mt-4">
+            <LineChart width={80} height={24} data={[{v: 1},{v: 2},{v: 2},{v: 3},{v: 4},{v: stats.resolvedToday%10+2}]}> <Line type="monotone" dataKey="v" stroke="#10b981" strokeWidth={2} dot={false} /></LineChart>
+          </div>
         </motion.div>
 
-        <motion.div whileHover={{ y: -5 }} className="rounded-[2rem] bg-white p-7 text-black shadow-xl  dark:shadow-none">
-        {/* Removed extra <motion.div> */}
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 mb-5">
+        <motion.div whileHover={{ y: -5 }} className="rounded-[2rem] bg-gradient-to-br from-rose-100 to-rose-50 dark:from-rose-900 dark:to-slate-900 p-7 text-slate-900 dark:text-white shadow-2xl border border-rose-100 dark:border-rose-900 transition-all hover:scale-[1.03]">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-200/60 dark:bg-rose-900/40 mb-5">
             <AlertTriangle size={24} />
           </div>
           <div className="text-sm font-bold uppercase tracking-wider opacity-80">Pending Critical</div>
-          <div className="mt-2 text-4xl font-black">{stats.pendingCritical}</div>
+          <div className="mt-2 text-4xl font-black">
+            {useAnimatedCount(stats.pendingCritical)}
+          </div>
           <div className="mt-3 text-xs font-medium opacity-80">Severity 8+ not resolved</div>
+          <div className="mt-4">
+            <LineChart width={80} height={24} data={[{v: 2},{v: 3},{v: 4},{v: 5},{v: 6},{v: stats.pendingCritical%10+3}]}> <Line type="monotone" dataKey="v" stroke="#ef4444" strokeWidth={2} dot={false} /></LineChart>
+          </div>
         </motion.div>
 
-        <motion.div whileHover={{ y: -5 }} className="rounded-[2rem] bg-white p-7 text-black shadow-xl ">
-        {/* Removed extra <motion.div> */}
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 mb-5">
+        <motion.div whileHover={{ y: -5 }} className="rounded-[2rem] bg-gradient-to-br from-slate-100 to-slate-50 dark:from-slate-800 dark:to-slate-900 p-7 text-slate-900 dark:text-white shadow-2xl border border-slate-100 dark:border-slate-800 transition-all hover:scale-[1.03]">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-200/60 dark:bg-slate-900/40 mb-5">
             <Clock3 size={24} />
           </div>
           <div className="text-sm font-bold uppercase tracking-wider opacity-80">Average Resolution</div>
-          <div className="mt-2 text-4xl font-black">{formatDays(stats.avgResolutionDays)}</div>
+          <div className="mt-2 text-4xl font-black">
+            {formatDays(stats.avgResolutionDays)}
+          </div>
           <div className="mt-3 text-xs font-medium opacity-80">Calculated from resolved reports</div>
+          <div className="mt-4">
+            <LineChart width={80} height={24} data={[{v: 1.2},{v: 1.5},{v: 1.7},{v: 2.1},{v: 2.3},{v: stats.avgResolutionDays}]}> <Line type="monotone" dataKey="v" stroke="#334155" strokeWidth={2} dot={false} /></LineChart>
+          </div>
         </motion.div>
       </div>
 
