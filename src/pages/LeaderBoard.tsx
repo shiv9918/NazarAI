@@ -170,7 +170,7 @@ export default function LeaderBoard() {
 
         <div className="space-y-6">
           <h3 className="text-lg font-bold text-slate-900 dark:text-white">{t('your_progress')}</h3>
-          <div className="rounded-3xl bg-slate-900 p-6 text-white shadow-xl dark:bg-slate-900 dark:border dark:border-slate-800">
+          <div className="rounded-3xl bg-white p-6 text-slate-900 shadow-xl border border-slate-200 dark:bg-slate-900 dark:text-white dark:border-slate-800">
             <div className="flex items-center gap-4 mb-6">
               <div className="h-14 w-14 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">
                 {currentInitial}

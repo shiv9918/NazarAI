@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { User, Bell, Shield, Globe, Moon, Save, Camera, Mail, Phone, MapPin, Navigation, Sun } from 'lucide-react';
+import { User, Bell, Shield, Save, Camera, Mail, Phone, MapPin, Navigation } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { getAddressFromCoords, getCurrentPosition } from '../utils/location';
@@ -148,7 +148,6 @@ export default function Settings() {
     { id: 'profile', name: t('settings_page.tabs.profile'), icon: <User size={20} /> },
     { id: 'notifications', name: t('settings_page.tabs.notifications'), icon: <Bell size={20} /> },
     { id: 'security', name: t('settings_page.tabs.security'), icon: <Shield size={20} /> },
-    { id: 'preferences', name: t('settings_page.tabs.preferences'), icon: <Globe size={20} /> },
   ];
 
   return (
@@ -367,56 +366,6 @@ export default function Settings() {
                         onChange={(e) => setSecurityForm((prev) => ({ ...prev, newPassword: e.target.value }))}
                         className="w-full rounded-2xl border-none bg-slate-50 py-4 px-5 text-slate-900 ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500 transition-all outline-none dark:bg-slate-950 dark:text-white dark:ring-slate-800"
                       />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'preferences' && (
-              <div className="p-8 md:p-12 space-y-8">
-                <div className="space-y-6">
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">{t('settings_page.preferences.appPreferences')}</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100 dark:bg-slate-950 dark:border-slate-800">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-blue-100 text-blue-600 rounded-xl dark:bg-blue-900/20 dark:text-blue-400">
-                          {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
-                        </div>
-                        <span className="font-bold dark:text-white">{t('settings_page.preferences.appearance')}</span>
-                      </div>
-                      <select 
-                        value={preferences.theme}
-                        onChange={(e) => {
-                          const newTheme = e.target.value as 'light' | 'dark';
-                          setPreferences((prev) => ({ ...prev, theme: newTheme }));
-                          setTheme(newTheme);
-                        }}
-                        className="w-full rounded-xl border-none bg-white py-3 px-4 text-slate-900 ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white dark:ring-slate-800"
-                      >
-                        <option value="light">{t('settings_page.preferences.lightMode')}</option>
-                        <option value="dark">{t('settings_page.preferences.darkMode')}</option>
-                      </select>
-                    </div>
-                    <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100 dark:bg-slate-950 dark:border-slate-800">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-emerald-100 text-emerald-600 rounded-xl dark:bg-emerald-900/20 dark:text-emerald-400">
-                          <Globe size={20} />
-                        </div>
-                        <span className="font-bold dark:text-white">{t('settings_page.preferences.language')}</span>
-                      </div>
-                      <select 
-                        value={preferences.language}
-                        onChange={(e) => {
-                          const newLanguage = e.target.value as 'en' | 'hi';
-                          setPreferences((prev) => ({ ...prev, language: newLanguage }));
-                          i18n.changeLanguage(newLanguage);
-                        }}
-                        className="w-full rounded-xl border-none bg-white py-3 px-4 text-slate-900 ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white dark:ring-slate-800"
-                      >
-                        <option value="en">English</option>
-                        <option value="hi">Hindi (हिन्दी)</option>
-                      </select>
                     </div>
                   </div>
                 </div>

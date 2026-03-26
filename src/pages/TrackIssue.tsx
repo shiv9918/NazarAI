@@ -2,26 +2,65 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Search, MapPin, Clock, CheckCircle2, ChevronRight, Phone, AlertCircle, ImageIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 const AUTH_TOKEN_KEY = 'nazarai_auth_token';
 
 export default function TrackIssue() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [searchId, setSearchId] = useState(searchParams.get('id') || '');
   const [complaint, setComplaint] = useState<any>(null);
+  const [complaints, setComplaints] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [sliderLoading, setSliderLoading] = useState(true);
 
   useEffect(() => {
     if (searchId) {
       handleSearch();
     }
+    fetchComplaints();
   }, []);
 
-  const handleSearch = async () => {
-    if (!searchId) return;
+  const fetchComplaints = async () => {
+    setSliderLoading(true);
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    if (!token) {
+      setSliderLoading(false);
+      setComplaints([]);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/reports`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || 'Failed to fetch your complaints.');
+      }
+      const reportData: any[] = Array.isArray(payload?.reports) ? payload.reports : [];
+      setComplaints(
+        reportData
+          .map((r) => ({
+            ...r,
+            reportedAtLabel: r.reportedAt ? new Date(r.reportedAt).toLocaleDateString('en-IN') : '-',
+          }))
+          .sort((a, b) => new Date(b.reportedAt).getTime() - new Date(a.reportedAt).getTime())
+      );
+    } catch (error) {
+      console.error('Error fetching complaints:', error);
+      setComplaints([]);
+    } finally {
+      setSliderLoading(false);
+    }
+  };
+
+  const handleSearch = async (targetId?: string) => {
+    const idToSearch = targetId || searchId;
+    if (!idToSearch) return;
     setLoading(true);
 
     const token = localStorage.getItem(AUTH_TOKEN_KEY);
@@ -32,7 +71,7 @@ export default function TrackIssue() {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/reports/${searchId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/reports/${idToSearch}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -100,6 +139,65 @@ export default function TrackIssue() {
         </button>
       </div>
 
+      {/* Only show complaints slider if no complaint is selected */}
+      {!complaint && (
+        <div className="mt-8">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <span className="inline-block w-1.5 h-5 bg-blue-600 rounded-sm mr-2"></span>
+            My Recent Reports
+          </h2>
+
+          {sliderLoading ? (
+            <div className="mt-4">{t('loading')}...</div>
+          ) : complaints.length === 0 ? (
+            <div className="mt-4 text-slate-500 dark:text-slate-400">{t('no_complaints_found')}</div>
+          ) : (
+            <div className="mt-4 flex flex-col gap-6 pb-2">
+              {complaints.map((item) => (
+                <div
+                  key={item.id || item.complaintCode}
+                  className="flex w-full bg-white rounded-3xl border border-slate-100 p-6 shadow-md items-center gap-6 dark:bg-slate-900 dark:border-slate-800"
+                >
+                  {/* Image */}
+                  <div className="flex-shrink-0 h-24 w-24 rounded-2xl overflow-hidden bg-slate-100 flex items-center justify-center">
+                    {item.imageUrl ? (
+                      <img src={item.imageUrl} alt={item.type} className="h-full w-full object-cover" />
+                    ) : (
+                      <ImageIcon className="text-slate-300" size={40} />
+                    )}
+                  </div>
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-bold text-blue-400 tracking-widest mb-1">#{(item.complaintCode || item.id)?.slice(-6).toUpperCase()}</div>
+                    <div className="text-lg font-bold text-slate-900 dark:text-white mb-1 capitalize">{item.type || '—'}</div>
+                    <div className="flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400">
+                      <MapPin size={16} className="inline-block mr-1" />
+                      {item.location || '-'}
+                    </div>
+                  </div>
+                  {/* Status + Button */}
+                  <div className="flex flex-col items-end gap-3">
+                    <span className="rounded-full bg-slate-100 px-4 py-1 text-xs font-bold text-slate-500 tracking-wide mb-2" style={{ letterSpacing: '0.05em' }}>
+                      {item.status?.toUpperCase()}
+                    </span>
+                    <button
+                      onClick={() => {
+                        const targetId = item.id || item.complaintCode;
+                        setSearchId(targetId);
+                        handleSearch(targetId);
+                      }}
+                      className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white hover:bg-blue-700 transition"
+                    >
+                      TRACK <ChevronRight size={18} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {loading && (
         <div className="mt-20 flex justify-center">
           <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
@@ -112,6 +210,19 @@ export default function TrackIssue() {
           animate={{ opacity: 1, y: 0 }}
           className="mt-12 space-y-8"
         >
+          {/* Back Button */}
+          <div className="mb-4">
+            <button
+              onClick={() => {
+                setSearchId("");
+                setComplaint(null);
+              }}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-blue-50 dark:bg-slate-800 dark:text-white dark:hover:bg-blue-900/20"
+            >
+              <ChevronRight size={18} style={{ transform: 'rotate(180deg)' }} />
+              Back
+            </button>
+          </div>
           {/* Status Card */}
           <div className="rounded-3xl bg-white p-8 shadow-xl border border-slate-100 dark:bg-slate-900 dark:border-slate-800">
             <div className="flex flex-wrap items-start justify-between gap-4">
