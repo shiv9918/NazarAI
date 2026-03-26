@@ -1,3 +1,13 @@
+// Helper to format ms to HH:MM:SS or Xh Ym
+function formatTimer(ms?: number) {
+  if (ms == null || ms <= 0) return '00:00:00';
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -27,8 +37,6 @@ import {
 } from 'recharts';
 import { useTranslation } from 'react-i18next';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
-const AUTH_TOKEN_KEY = 'nazarai_auth_token';
 
 type ReportStatus = 'reported' | 'in_progress' | 'resolved';
 type DepartmentName = 'roads' | 'sanitation' | 'electrical' | 'water' | 'administration';
@@ -60,7 +68,11 @@ type Report = {
   aiDescription?: string | null;
   citizenRating?: 'satisfied' | 'unsatisfied' | null;
   isReopened?: boolean;
+  // Add timer/critical flag helper fields (not persisted, for UI logic)
+  timeLeftMs?: number;
+  isOverdue?: boolean;
 };
+
 
 type DashboardTab = 'all' | 'recomplaints';
 type LiveFeedTab = 'all' | 'overdue' | 'fake' | 'resolved';
@@ -167,19 +179,33 @@ async function compressToDataUrl(file: File): Promise<string> {
   return canvas.toDataURL('image/jpeg', 0.74);
 }
 
+
+
 export default function DashboardHome() {
   const { t } = useTranslation();
+  // Pagination for Issue Status
+  const [issuePage, setIssuePage] = useState(1);
+  const ISSUES_PER_PAGE = 5;
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchText, setSearchText] = useState('');
+
+  // Timer state to force re-render every minute for countdown
+  const [, setTimerTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setTimerTick(tick => tick + 1), 60000); // every minute
+    return () => clearInterval(interval);
+  }, []);
   const [activeTab, setActiveTab] = useState<DashboardTab>('all');
   const [liveFeedTab, setLiveFeedTab] = useState<LiveFeedTab>('all');
   const [liveFeedSearch, setLiveFeedSearch] = useState('');
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [modalForm, setModalForm] = useState<ModalForm | null>(null);
   const [saving, setSaving] = useState(false);
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+  const AUTH_TOKEN_KEY = 'nazarai_auth_token';
 
   useEffect(() => {
     let isMounted = true;
@@ -312,21 +338,40 @@ export default function DashboardHome() {
       .sort((a, b) => b.count - a.count);
   }, [reports]);
 
+  // Critical Flags: all unresolved issues that are overdue (timer expired) or high severity/emergency
   const emergencyReports = useMemo(() => {
-    return reports.filter((report) => (report.isEmergency || report.severity >= 9) && report.status !== 'resolved');
+    const now = Date.now();
+    return reports.filter((report) => {
+      if (report.status === 'resolved') return false;
+      const reportedAt = new Date(report.reportedAt).getTime();
+      const deadline = reportedAt + 48 * 60 * 60 * 1000;
+      const isOverdue = now >= deadline;
+      return isOverdue || report.isEmergency || report.severity >= 9;
+    });
   }, [reports]);
 
+
+  // Add timer/overdue logic to each report
   const filteredReports = useMemo(() => {
     const search = searchText.toLowerCase().trim();
-
-    return reports.filter((report) => {
+    const now = Date.now();
+    return reports.map((report) => {
+      if (report.status === 'resolved') return { ...report, timeLeftMs: 0, isOverdue: false };
+      const reportedAt = new Date(report.reportedAt).getTime();
+      const deadline = reportedAt + 48 * 60 * 60 * 1000;
+      const timeLeftMs = deadline - now;
+      return {
+        ...report,
+        timeLeftMs,
+        isOverdue: timeLeftMs <= 0,
+      };
+    })
+    .filter((report) => {
       const isRecomplaint = Boolean(report.isReopened) || report.citizenRating === 'unsatisfied';
       if (activeTab === 'recomplaints' && !isRecomplaint) return false;
-
       if (departmentFilter !== 'all' && report.department !== departmentFilter) return false;
       if (statusFilter !== 'all' && report.status !== statusFilter) return false;
       if (!search) return true;
-
       return (
         report.location.toLowerCase().includes(search) ||
         report.id.toLowerCase().includes(search) ||
@@ -334,6 +379,10 @@ export default function DashboardHome() {
       );
     });
   }, [reports, activeTab, departmentFilter, statusFilter, searchText]);
+
+  // Pagination logic for filteredReports
+  const totalIssuePages = Math.ceil(filteredReports.length / ISSUES_PER_PAGE);
+  const paginatedReports = filteredReports.slice((issuePage - 1) * ISSUES_PER_PAGE, issuePage * ISSUES_PER_PAGE);
 
   const reComplaintCount = useMemo(() => {
     return reports.filter((report) => Boolean(report.isReopened) || report.citizenRating === 'unsatisfied').length;
@@ -495,102 +544,38 @@ export default function DashboardHome() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <div className="space-y-4 xl:col-span-1">
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <h2 className="text-lg font-black text-slate-900 dark:text-white">Critical Flags</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Highest priority unresolved issues</p>
-            <div className="mt-4 space-y-3">
-              {emergencyReports.slice(0, 4).map((report) => (
-                <div key={report.id} className="rounded-xl border border-rose-200 bg-rose-50 p-3 dark:border-rose-900/40 dark:bg-rose-950/30">
-                  <p className="text-sm font-bold text-rose-700 dark:text-rose-300">{report.department.toUpperCase()} — {report.location}</p>
-                  <p className="text-xs text-rose-600 dark:text-rose-400">{report.type.replace(/_/g, ' ')} | {Math.ceil((new Date().getTime() - new Date(report.reportedAt).getTime()) / (1000 * 60 * 60))} hrs unresolved</p>
-                  <div className="mt-2 flex items-center gap-2 text-[11px] font-bold">
-                    <span className="rounded-full bg-rose-100 px-2 py-1 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">SLA Breached</span>
-                    <span className="rounded-full bg-white px-2 py-1 text-slate-700 dark:bg-slate-800 dark:text-slate-300">ID #{report.id.slice(-4)}</span>
+      <div className="grid grid-cols-1 gap-6">
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-lg dark:border-rose-900/40 dark:bg-rose-950/30">
+          <h2 className="text-2xl font-black text-rose-700 dark:text-rose-300 mb-2">Critical Flags</h2>
+          <p className="mb-6 text-base text-slate-500 dark:text-slate-400">Highest priority unresolved issues (Full Details)</p>
+          <div className="space-y-6">
+            {emergencyReports.length === 0 && (
+              <div className="text-center text-lg text-slate-400">No critical issues at the moment.</div>
+            )}
+            {emergencyReports.map((report) => (
+              <div key={report.id} className="rounded-2xl border border-rose-200 bg-rose-50 p-6 dark:border-rose-900/40 dark:bg-rose-950/40 shadow">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-3 mb-2">
+                      <AlertTriangle className="text-rose-500 dark:text-rose-400" />
+                      <span className="text-lg font-bold text-rose-700 dark:text-rose-300">{report.department.toUpperCase()} — {report.location}</span>
+                    </div>
+                    <div className="text-sm text-rose-600 dark:text-rose-400 mb-2">{report.type.replace(/_/g, ' ')} | {Math.ceil((new Date().getTime() - new Date(report.reportedAt).getTime()) / (1000 * 60 * 60))} hrs unresolved</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mb-2">Reported by: <span className="font-semibold">{report.citizenName || 'N/A'}</span> | ID #{report.id}</div>
+                    {report.description && <div className="text-sm text-slate-700 dark:text-slate-200 mb-2">Description: {report.description}</div>}
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="xl:col-span-2">
-          <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="space-x-1">
-                {[
-                  { id: 'all' as const, label: 'All' },
-                  { id: 'overdue' as const, label: 'Overdue' },
-                  { id: 'fake' as const, label: 'Fake reports' },
-                  { id: 'resolved' as const, label: 'Resolved' },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setLiveFeedTab(tab.id)}
-                    className={`rounded-lg border px-3 py-1 text-xs font-bold transition ${
-                      liveFeedTab === tab.id
-                        ? 'border-blue-600 bg-blue-600 text-white'
-                        : 'border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-              <div className="relative w-full max-w-sm">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={liveFeedSearch}
-                  onChange={(e) => setLiveFeedSearch(e.target.value)}
-                  placeholder="Search for issue or location..."
-                  className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                />
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-600 dark:text-slate-300">
-                <thead>
-                  <tr className="border-b border-slate-200 uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                    <th className="py-3 px-2">ID</th>
-                    <th className="py-3 px-2">Issue</th>
-                    <th className="py-3 px-2">Department</th>
-                    <th className="py-3 px-2">Hours Elapsed</th>
-                    <th className="py-3 px-2">Assigned To</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredLiveFeed.slice(0, 12).map((report) => {
-                    const hoursElapsed = Math.max(0, Math.ceil((new Date().getTime() - new Date(report.reportedAt).getTime()) / (1000 * 60 * 60)));
-                    let badgeClass = 'bg-slate-100 text-slate-700';
-                    let statusLabel = 'Pending';
-                    if (report.status === 'resolved') { badgeClass = 'bg-emerald-100 text-emerald-700'; statusLabel = 'Resolved'; }
-                    if (report.severity >= 8 && report.status !== 'resolved') { badgeClass = 'bg-rose-100 text-rose-700'; statusLabel = 'Overdue'; }
-                    if (report.isDuplicate) { badgeClass = 'bg-amber-100 text-amber-700'; statusLabel = 'Fake report'; }
-
-                    return (
-                      <tr key={report.id} className="border-b border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/30">
-                        <td className="px-2 py-3 font-bold">#{report.id.slice(-3)}</td>
-                        <td className="px-2 py-3 capitalize">{report.type.replace(/_/g, ' ')}</td>
-                        <td className="px-2 py-3 capitalize">{report.department}</td>
-                        <td className="px-2 py-3">
-                          <span className={`rounded-full px-2 py-1 text-xs font-bold ${badgeClass}`}>{statusLabel}</span>
-                        </td>
-                        <td className="px-2 py-3">{report.citizenName || 'N/A'}</td>
-                      </tr>
-                    );
-                  })}
-                  {filteredLiveFeed.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="px-2 py-6 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
-                        No reports matched this tab/filter.
-                      </td>
-                    </tr>
+                  {report.imageUrl && (
+                    <img src={report.imageUrl} alt="Issue" className="rounded-xl max-w-xs max-h-40 object-cover border border-rose-200 dark:border-rose-900" />
                   )}
-                </tbody>
-              </table>
-            </div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-rose-100 px-3 py-1 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 text-xs font-bold">SLA Breached</span>
+                  <span className="rounded-full bg-white px-3 py-1 text-slate-700 dark:bg-slate-800 dark:text-slate-300 text-xs font-bold">ID #{report.id.slice(-4)}</span>
+                  <span className="rounded-full bg-blue-100 px-3 py-1 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs font-bold">Severity: {report.severity}</span>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700 dark:bg-slate-800 dark:text-slate-300 text-xs font-bold">Status: {report.status}</span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -666,6 +651,7 @@ export default function DashboardHome() {
               <thead>
                 <tr className="border-b border-slate-200 text-xs font-black uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:text-slate-400">
                   <th className="px-3 py-3">Complaint ID</th>
+                  <th className="px-3 py-3">Timer</th>
                   <th className="px-3 py-3">Issue Type</th>
                   <th className="px-3 py-3">Location</th>
                   <th className="px-3 py-3">Department</th>
@@ -676,13 +662,25 @@ export default function DashboardHome() {
                 </tr>
               </thead>
               <tbody>
-                {filteredReports.map((report) => (
+                {paginatedReports.map((report) => (
                   <tr
                     key={report.id}
-                    className="cursor-pointer border-b border-slate-100 text-sm hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/30"
+                    className={`cursor-pointer border-b border-slate-100 text-sm hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/30 ${report.isOverdue ? 'bg-rose-50 dark:bg-rose-900/10' : ''}`}
                     onClick={() => openReportModal(report)}
                   >
                     <td className="px-3 py-3 font-bold text-slate-800 dark:text-slate-200">{report.complaintCode || report.id}</td>
+                    {/* Timer column */}
+                    <td className="px-3 py-3">
+                      {report.status === 'resolved' ? (
+                        <span className="text-green-600 font-semibold">Resolved</span>
+                      ) : report.isOverdue ? (
+                        <span className="text-rose-600 font-semibold">Overdue</span>
+                      ) : (
+                        <span className="font-mono text-blue-700">
+                          {formatTimer(report.timeLeftMs)}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-3 capitalize text-slate-700 dark:text-slate-300">{report.type.replace(/_/g, ' ')}</td>
                     <td className="px-3 py-3 text-slate-600 dark:text-slate-400">{report.location}</td>
                     <td className="px-3 py-3">
@@ -732,6 +730,20 @@ export default function DashboardHome() {
                 )}
               </tbody>
             </table>
+            {/* Pagination Controls */}
+            {totalIssuePages > 1 && (
+              <div className="flex justify-center items-center gap-2 mt-4">
+                {Array.from({ length: totalIssuePages }, (_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setIssuePage(i + 1)}
+                    className={`rounded-full px-3 py-1 text-sm font-bold border transition ${issuePage === i + 1 ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

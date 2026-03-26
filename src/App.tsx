@@ -10,7 +10,6 @@ import ProtectedRoute from './components/ProtectedRoute';
 const Home = lazy(() => import('./pages/Home'));
 const ReportIssue = lazy(() => import('./pages/ReportIssue'));
 const TrackIssue = lazy(() => import('./pages/TrackIssue'));
-const CityMap = lazy(() => import('./pages/CityMap'));
 const About = lazy(() => import('./pages/About'));
 const DashboardLayout = lazy(() => import('./pages/dashboard/DashboardLayout'));
 const DashboardHome = lazy(() => import('./pages/dashboard/DashboardHome'));
@@ -57,7 +56,6 @@ export default function App() {
                           <Route path="/leaderboard" element={<LeaderBoard />} />
                         </Route>
 
-                        <Route path="/map" element={<CityMap />} />
                         <Route path="/about" element={<About />} />
                         <Route
                           path="/settings"
