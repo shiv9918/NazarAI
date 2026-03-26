@@ -220,10 +220,25 @@ const WHATSAPP_ISSUE_TYPE_ALIASES: Record<string, string> = {
   pothole: 'pothole',
   broken_streetlight: 'broken_streetlight',
   water_leakage: 'water_leakage',
+  tree: 'fallen_tree',
+  tree_gira: 'fallen_tree',
   fallen_tree: 'fallen_tree',
   hanging_wire: 'hanging_wire',
   park_broken_equipment: 'park_broken_equipment',
   public_bench_broken: 'public_bench_broken',
+};
+
+const WHATSAPP_ISSUE_TO_DEPARTMENT: Record<string, string> = {
+  pothole: 'pwd',
+  garbage_overflow: 'sanitation',
+  broken_streetlight: 'bses',
+  water_leakage: 'djb',
+  illegal_dumping: 'sanitation',
+  fallen_tree: 'forest_dept',
+  hanging_wire: 'bses',
+  // Kept under administration until dedicated department mapping is introduced.
+  park_broken_equipment: 'administration',
+  public_bench_broken: 'administration',
 };
 
 function normalizeWhatsappIssueType(rawType: string | null | undefined) {
@@ -238,6 +253,10 @@ function normalizeWhatsappIssueType(rawType: string | null | undefined) {
   }
 
   return canonical;
+}
+
+function getWhatsappDepartmentFromIssueType(issueType: string) {
+  return WHATSAPP_ISSUE_TO_DEPARTMENT[issueType] || assignDepartment(issueType, null);
 }
 
 async function getWhatsappSession(citizenId: string, fromPhone: string) {
@@ -358,7 +377,35 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
     return;
   }
 
-  const assignedDepartment = assignDepartment(normalizedIssueType, null);
+  const duplicateResult = await pool.query<{ id: string; complaint_code: string }>(
+    `SELECT
+       id,
+       (
+         'CMP-'
+         || TO_CHAR(COALESCE(reported_at, NOW()), 'YYYY')
+         || '-'
+         || LPAD(COALESCE(complaint_number, 0)::text, 6, '0')
+       ) AS complaint_code
+     FROM reports
+     WHERE citizen_id = $1
+       AND image_url = $2
+       AND ROUND(lat::numeric, 5) = ROUND($3::numeric, 5)
+       AND ROUND(lng::numeric, 5) = ROUND($4::numeric, 5)
+     LIMIT 1`,
+    [payload.citizen.id, image.dataUrl, payload.lat, payload.lng]
+  );
+
+  if (duplicateResult.rowCount) {
+    const existingCode = duplicateResult.rows[0].complaint_code;
+    await clearWhatsappSession(payload.citizen.id, normalizePhone(stripWhatsappPrefix(payload.from)));
+    await sendTwilioWhatsAppMessage({
+      to: payload.from,
+      message: `This report already has been submitted. Complaint ID: ${existingCode}.`,
+    });
+    return;
+  }
+
+  const assignedDepartment = getWhatsappDepartmentFromIssueType(normalizedIssueType);
   const citizenName = `${payload.citizen.first_name} ${payload.citizen.last_name}`.trim();
 
   const inserted = await pool.query<{ id: string; complaint_code: string }>(

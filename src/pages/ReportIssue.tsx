@@ -309,6 +309,11 @@ export default function ReportIssue() {
       return;
     }
 
+    if (isDuplicate) {
+      alert('This report already has been submitted.');
+      return;
+    }
+
     // 1. Keep internal ID for payload, but show structured complaint code in UI
     const reportId = globalThis.crypto?.randomUUID?.() || `report-${Date.now()}`;
     setComplaintId(getPendingComplaintCode());
@@ -372,8 +377,12 @@ export default function ReportIssue() {
       } catch (error) {
         console.error("Background submission error:", error);
         setIsSaving(false);
-        // We don't alert here because the user is already on the success screen
-        // In a real app, we might show a "Sync Failed" badge on the success card
+        const message = error instanceof Error ? error.message : 'Failed to submit report.';
+        if (/already has been submitted/i.test(message)) {
+          setStep(4);
+          setComplaintId(null);
+          alert('This report already has been submitted.');
+        }
       }
     })();
   };
@@ -703,17 +712,19 @@ export default function ReportIssue() {
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800">
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Additional Details</div>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Add more details about the issue..."
-                  className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-bold dark:bg-slate-800 dark:text-white min-h-[120px]"
-                />
-              </div>
+              {!isDuplicate && (
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Additional Details</div>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Add more details about the issue..."
+                    className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-bold dark:bg-slate-800 dark:text-white min-h-[120px]"
+                  />
+                </div>
+              )}
 
-              {uploadedImageUrl && (
+              {!isDuplicate && uploadedImageUrl && (
                 <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center gap-4 dark:bg-emerald-900/10 dark:border-emerald-900/20">
                   <CheckCircle2 className="text-emerald-600" size={20} />
                   <div>
@@ -726,37 +737,48 @@ export default function ReportIssue() {
               )}
 
               {isDuplicate && (
-                <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-start gap-4 dark:bg-rose-900/10 dark:border-rose-900/20">
-                  <AlertCircle className="text-rose-600 shrink-0" size={20} />
-                  <div>
-                    <h4 className="font-bold text-rose-900 dark:text-rose-400 text-sm">Duplicate Issue Detected</h4>
-                    <p className="text-xs text-rose-700 dark:text-rose-500 mt-1">
-                      This issue has already been reported at this location. We've increased the priority to **CRITICAL** to expedite resolution.
-                    </p>
+                <div className="space-y-4">
+                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-start gap-4 dark:bg-rose-900/10 dark:border-rose-900/20">
+                    <AlertCircle className="text-rose-600 shrink-0" size={20} />
+                    <div>
+                      <h4 className="font-bold text-rose-900 dark:text-rose-400 text-sm">Duplicate Issue Detected</h4>
+                      <p className="text-xs text-rose-700 dark:text-rose-500 mt-1">
+                        This report already has been submitted at this location. Please do not submit again.
+                      </p>
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/citizen-dashboard')}
+                    className="w-full py-4 rounded-2xl bg-slate-800 text-white font-bold hover:bg-slate-900 transition-all dark:bg-slate-700 dark:hover:bg-slate-600"
+                  >
+                    Back to Citizen Dashboard
+                  </button>
                 </div>
               )}
             </div>
 
-            <div className="mt-10">
-              <button
-                onClick={handleSubmit}
-                disabled={isSaving}
-                className="w-full py-5 rounded-[2rem] bg-blue-600 text-white font-black text-lg shadow-2xl shadow-blue-500/30 hover:bg-blue-700 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="animate-spin" size={24} />
-                    Submitting Report...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={24} />
-                    {t('submit_report')}
-                  </>
-                )}
-              </button>
-            </div>
+            {!isDuplicate && (
+              <div className="mt-10">
+                <button
+                  onClick={handleSubmit}
+                  disabled={isSaving || isDuplicate}
+                  className="w-full py-5 rounded-[2rem] bg-blue-600 text-white font-black text-lg shadow-2xl shadow-blue-500/30 hover:bg-blue-700 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="animate-spin" size={24} />
+                      Submitting Report...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={24} />
+                      {t('submit_report')}
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </motion.div>
         )}
 

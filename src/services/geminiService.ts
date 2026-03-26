@@ -99,8 +99,11 @@ if (!apiKey) {
 
 const client = new GoogleGenerativeAI(apiKey || '');
 const MODEL_CANDIDATES = [
+  'gemini-2.5-flash',
   'gemini-3-flash-preview',
 ];
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
@@ -124,13 +127,25 @@ const generateContentWithFallback = async (input: string | Array<{ text?: string
   let lastError: unknown;
 
   for (const modelName of MODEL_CANDIDATES) {
-    try {
-      const model = client.getGenerativeModel({ model: modelName });
-      return await model.generateContent(input as any);
-    } catch (error) {
-      lastError = error;
-      if (shouldTryNextModel(error)) continue;
-      throw error;
+    const model = client.getGenerativeModel({ model: modelName });
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await model.generateContent(input as any);
+      } catch (error) {
+        lastError = error;
+
+        // Retry same model for transient 429/quota spikes with exponential backoff.
+        if (isQuotaError(error) && attempt < 2) {
+          const waitMs = 700 * Math.pow(2, attempt) + Math.floor(Math.random() * 250);
+          await delay(waitMs);
+          continue;
+        }
+
+        if (shouldTryNextModel(error)) break;
+        if (isQuotaError(error)) break;
+        throw error;
+      }
     }
   }
 

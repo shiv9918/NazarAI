@@ -192,6 +192,33 @@ router.post('/', async (req, res) => {
     });
   }
 
+  if (report.imageUrl) {
+    const duplicateResult = await pool.query<{ id: string; complaint_code: string }>(
+      `SELECT
+         id,
+         (
+           'CMP-'
+           || TO_CHAR(COALESCE(reported_at, NOW()), 'YYYY')
+           || '-'
+           || LPAD(COALESCE(complaint_number, 0)::text, 6, '0')
+         ) AS complaint_code
+       FROM reports
+       WHERE citizen_id = $1
+         AND image_url = $2
+         AND ROUND(lat::numeric, 5) = ROUND($3::numeric, 5)
+         AND ROUND(lng::numeric, 5) = ROUND($4::numeric, 5)
+       LIMIT 1`,
+      [currentUser.id, report.imageUrl, report.lat, report.lng]
+    );
+
+    if (duplicateResult.rowCount) {
+      return res.status(409).json({
+        message: 'This report already has been submitted.',
+        complaintCode: duplicateResult.rows[0].complaint_code,
+      });
+    }
+  }
+
   const assignedDepartment = assignDepartment(report.type, report.department);
   const citizenName = `${currentUser.first_name} ${currentUser.last_name}`.trim();
 
