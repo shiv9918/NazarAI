@@ -3,18 +3,22 @@ export async function handleReopenedComplaintDetailedFeedback(params: {
   citizenId: string;
   bodyText: string;
 }): Promise<{ handled: boolean; message?: string }> {
-  // Look for recent reopened complaint (is_reopened = true, feedback status = unsatisfied)
+  // Look for the most recent complaint where citizen already said "unsatisfied"
+  // and we are waiting for detailed explanation.
   const reopenedResult = await pool.query<{
     id: string;
     complaint_code: string;
+    routed_department: string;
   }>(
     `SELECT 
       r.id,
       'CMP-' || TO_CHAR(r.reported_at, 'YYYY') || '-' || 
-      LPAD(COALESCE(r.complaint_number, 0)::text, 6, '0') AS complaint_code
+      LPAD(COALESCE(r.complaint_number, 0)::text, 6, '0') AS complaint_code,
+      COALESCE(r.original_department, r.department, 'administration') AS routed_department
      FROM reports r
+     JOIN whatsapp_feedback_requests w ON w.report_id = r.id
      WHERE r.citizen_id = $1
-       AND r.is_reopened = TRUE
+       AND w.status = 'unsatisfied'
        AND r.citizen_feedback LIKE '%विस्तृत प्रतिक्रिया की प्रतीक्षा में%'
        AND r.updated_at > NOW() - INTERVAL '4 hours'
      ORDER BY r.updated_at DESC
@@ -33,18 +37,24 @@ export async function handleReopenedComplaintDetailedFeedback(params: {
     return { handled: false };
   }
 
-  // Update feedback with detailed explanation
+  // Now reopen and route back to the responsible/original department.
   await pool.query(
     `UPDATE reports
-     SET citizen_feedback = $2,
+     SET status = 'reported',
+         is_reopened = TRUE,
+         original_department = COALESCE(original_department, $2),
+         department = COALESCE(original_department, $2),
+         reopen_votes = COALESCE(reopen_votes, 0) + 1,
+         citizen_rating = 'unsatisfied',
+         citizen_feedback = $3,
          updated_at = NOW()
      WHERE id = $1`,
-    [reopened.id, `विस्तृत प्रतिक्रिया: ${params.bodyText.trim()}`]
+    [reopened.id, reopened.routed_department, `विस्तृत प्रतिक्रिया: ${params.bodyText.trim()}`]
   );
 
   return {
     handled: true,
-    message: `✅ *आपकी प्रतिक्रिया दर्ज हो गई*\n\n📝 आपकी जानकारी:\n"${params.bodyText.trim()}"\n\n👷 प्रशासन की टीम इसे देखेगी और जल्द से जल्द समाधान करेगी।\n\nधन्यवाद! 🙏`,
+    message: `✅ *आपकी प्रतिक्रिया दर्ज हो गई*\n\n📝 आपकी जानकारी:\n"${params.bodyText.trim()}"\n\n${getReopenRoutedMessage(reopened.complaint_code, reopened.routed_department)}\n\nधन्यवाद! 🙏`,
   };
 }
 import { pool } from '../config/db';
@@ -76,6 +86,26 @@ type PendingFeedbackRow = {
   due_at: Date;
   resolution_notes: string | null;
 };
+
+function departmentToLabel(department: string) {
+  const map: Record<string, string> = {
+    pwd: 'PWD (Public Works Department)',
+    bses: 'BSES / NDMC (Electrical)',
+    djb: 'DJB (Delhi Jal Board)',
+    traffic_police: 'Traffic Police',
+    forest_dept: 'Forest Department',
+    fire_services: 'Delhi Fire Services',
+    sanitation: 'Sanitation Department',
+    administration: 'Municipal Administration',
+    
+    // Legacy mappings for backward compatibility
+    roads: 'PWD (Public Works Department)',
+    electrical: 'BSES / NDMC (Electrical)',
+    water: 'DJB (Delhi Jal Board)',
+  };
+
+  return map[department] || `${department} Department`;
+}
 
 function normalizePhone(raw: string) {
   return raw.replace(/[^\d+]/g, '').trim();
@@ -196,6 +226,16 @@ function getReopenConfirmationMessage(reportId: string, hindiIssue: string) {
     '👷 प्रशासन द्वारा इसका पुनः मूल्यांकन किया जाएगा।',
     '',
     'हम जल्द ही आपको अपडेट देंगे। धन्यवाद! 🙏',
+  ].join('\n');
+}
+
+function getReopenRoutedMessage(reportId: string, department: string) {
+  return [
+    '🔄 *आपकी शिकायत फिर से खोली गई है*',
+    `शिकायत ID: #${reportId}`,
+    '',
+    `✅ यह शिकायत ${departmentToLabel(department)} को दोबारा भेज दी गई है।`,
+    '👷 संबंधित विभाग इसे पुनः जांचेगा।',
   ].join('\n');
 }
 
@@ -355,40 +395,15 @@ export async function handleIncomingResolutionFeedback(params: {
     };
   }
 
-  // Ask citizen what exactly wasn't fixed
-  const deptResult = await pool.query<{ department: string }>(
-    `SELECT department FROM reports WHERE id = $1 LIMIT 1`,
-    [row.report_id]
-  );
-  const originalDept = deptResult.rows[0]?.department || 'unknown';
-  
-  // Send message asking for specific details about what wasn't fixed
-  const issueResult = await pool.query<{ type: string }>(
-    `SELECT type FROM reports WHERE id = $1 LIMIT 1`,
-    [row.report_id]
-  );
-  const issueType = issueResult.rows[0]?.type || 'problem';
-  const hindiIssue = issueTypeToHindi(issueType);
-
-  // Send message asking for feedback about what's still wrong
-  await sendTwilioWhatsAppMessage({
-    to: ensureWhatsappTo(params.fromPhone),
-    message: askForReopenDetails(row.complaint_code),
-  });
-
-  // Mark as reopened, store original dept, route to administration for review
+  // Mark intent as unsatisfied and wait for detailed feedback.
+  // Reopen happens only after citizen sends detailed text.
   await pool.query(
     `UPDATE reports
-     SET status = 'reported',
-         is_reopened = TRUE,
-         original_department = $2,
-         department = 'administration',
-         reopen_votes = COALESCE(reopen_votes, 0) + 1,
-         citizen_rating = 'unsatisfied',
-         citizen_feedback = $3,
+     SET citizen_rating = 'unsatisfied',
+         citizen_feedback = $2,
          updated_at = NOW()
      WHERE id = $1`,
-    [row.report_id, originalDept, `नागरिक प्रतिक्रिया - नहीं: शिकायत पुनः खुली (विस्तृत प्रतिक्रिया की प्रतीक्षा में)`]
+    [row.report_id, `नागरिक प्रतिक्रिया - नहीं: शिकायत पुनः खुली (विस्तृत प्रतिक्रिया की प्रतीक्षा में)`]
   );
 
   await pool.query(
@@ -400,7 +415,7 @@ export async function handleIncomingResolutionFeedback(params: {
 
   return {
     handled: true as const,
-    message: 'नागरिक से विस्तृत प्रतिक्रिया की अपेक्षा है।',
+    message: askForReopenDetails(row.complaint_code),
   };
 }
 

@@ -115,7 +115,15 @@ export default function CitizenDashboard() {
       if (!token) {
         if (isMounted) {
           setReports([]);
-          setStats({ resolved: 0, avgTime: '0 days', points: 0, rank: '—', percentage: 0 });
+            setStats({
+              totalReports: 0,
+              resolved: 0,
+              avgTime: '0 days',
+              points: 0,
+              rank: '—',
+              percentage: 0,
+              whatsappReports: 0,
+            });
           setLoading(false);
         }
         return;
@@ -141,6 +149,7 @@ export default function CitizenDashboard() {
         const resolvedCount = reportsData.filter((r) => r.status === 'resolved').length;
         const avgTime = calculateAvgResolutionTime(reportsData);
         const points = reportsData.length * 50; // 50 points per report
+        const whatsappReports = reportsData.filter((r) => Boolean(r.citizenPhone)).length;
         
         // For now, use simple ranking (can be improved with actual leaderboard API)
         const allReportsResponse = await fetch(`${API_BASE_URL}/api/reports`, {
@@ -154,11 +163,13 @@ export default function CitizenDashboard() {
         const { rank, percentage } = calculateRanking(reportsData.length, allReports);
 
         setStats({
+          totalReports: reportsData.length,
           resolved: resolvedCount,
           avgTime,
           points,
           rank,
           percentage,
+          whatsappReports,
         });
 
         setReports(reportsData.sort((a: any, b: any) => {
@@ -217,6 +228,25 @@ export default function CitizenDashboard() {
           <span>{t('citizen_dashboard.report_issue_now')}</span>
           <ArrowRight size={24} className="transition-transform group-hover:translate-x-2" />
         </Link>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Total Reports</div>
+          <div className="mt-2 text-4xl font-black text-slate-900 dark:text-white">{stats?.totalReports ?? reports.length}</div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Leadership Rank</div>
+          <div className="mt-2 text-4xl font-black text-blue-600 dark:text-blue-400">{stats?.rank || '—'}</div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Reported by WhatsApp</div>
+          <div className="mt-2 text-4xl font-black text-emerald-600 dark:text-emerald-400">{stats?.whatsappReports || 0}</div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Community Points</div>
+          <div className="mt-2 text-4xl font-black text-amber-600 dark:text-amber-400">{stats?.points || 0}</div>
+        </div>
       </div>
 
       <div className="space-y-6">

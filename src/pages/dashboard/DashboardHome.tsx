@@ -63,6 +63,7 @@ type Report = {
 };
 
 type DashboardTab = 'all' | 'recomplaints';
+type LiveFeedTab = 'all' | 'overdue' | 'fake' | 'resolved';
 
 type ModalForm = {
   status: ReportStatus;
@@ -174,6 +175,8 @@ export default function DashboardHome() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchText, setSearchText] = useState('');
   const [activeTab, setActiveTab] = useState<DashboardTab>('all');
+  const [liveFeedTab, setLiveFeedTab] = useState<LiveFeedTab>('all');
+  const [liveFeedSearch, setLiveFeedSearch] = useState('');
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [modalForm, setModalForm] = useState<ModalForm | null>(null);
   const [saving, setSaving] = useState(false);
@@ -342,6 +345,36 @@ export default function DashboardHome() {
       .slice(0, 10);
   }, [reports]);
 
+  const filteredLiveFeed = useMemo(() => {
+    const search = liveFeedSearch.toLowerCase().trim();
+
+    return liveFeed.filter((report) => {
+      const isOverdue = report.severity >= 8 && report.status !== 'resolved';
+      const isFake = Boolean(report.isDuplicate);
+      const isResolved = report.status === 'resolved';
+
+      if (liveFeedTab === 'overdue' && !isOverdue) return false;
+      if (liveFeedTab === 'fake' && !isFake) return false;
+      if (liveFeedTab === 'resolved' && !isResolved) return false;
+
+      if (!search) return true;
+
+      const haystack = [
+        report.id,
+        report.complaintCode,
+        report.type,
+        report.department,
+        report.location,
+        report.citizenName,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(search);
+    });
+  }, [liveFeed, liveFeedTab, liveFeedSearch]);
+
   const openReportModal = (report: Report) => {
     setSelectedReport(report);
     setModalForm({
@@ -486,17 +519,38 @@ export default function DashboardHome() {
           <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div className="space-x-1">
-                {['All', 'Overdue', 'Fake reports', 'Resolved'].map((tab) => (
-                  <button key={tab} className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">{tab}</button>
+                {[
+                  { id: 'all' as const, label: 'All' },
+                  { id: 'overdue' as const, label: 'Overdue' },
+                  { id: 'fake' as const, label: 'Fake reports' },
+                  { id: 'resolved' as const, label: 'Resolved' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setLiveFeedTab(tab.id)}
+                    className={`rounded-lg border px-3 py-1 text-xs font-bold transition ${
+                      liveFeedTab === tab.id
+                        ? 'border-blue-600 bg-blue-600 text-white'
+                        : 'border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
                 ))}
               </div>
               <div className="relative w-full max-w-sm">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input type="text" placeholder="Search for issue or location..." className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                <input
+                  type="text"
+                  value={liveFeedSearch}
+                  onChange={(e) => setLiveFeedSearch(e.target.value)}
+                  placeholder="Search for issue or location..."
+                  className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                />
               </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-left text-sm text-slate-600 dark:text-slate-300">
+              <table className="w-full text-left text-sm text-slate-600 dark:text-slate-300">
                 <thead>
                   <tr className="border-b border-slate-200 uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
                     <th className="py-3 px-2">ID</th>
@@ -507,7 +561,7 @@ export default function DashboardHome() {
                   </tr>
                 </thead>
                 <tbody>
-                  {liveFeed.slice(0, 12).map((report) => {
+                  {filteredLiveFeed.slice(0, 12).map((report) => {
                     const hoursElapsed = Math.max(0, Math.ceil((new Date().getTime() - new Date(report.reportedAt).getTime()) / (1000 * 60 * 60)));
                     let badgeClass = 'bg-slate-100 text-slate-700';
                     let statusLabel = 'Pending';
@@ -527,6 +581,13 @@ export default function DashboardHome() {
                       </tr>
                     );
                   })}
+                  {filteredLiveFeed.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-2 py-6 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
+                        No reports matched this tab/filter.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -564,7 +625,7 @@ export default function DashboardHome() {
           )}
         </div>
         <div className="mb-4 flex flex-wrap items-center gap-3">
-            <div className="relative min-w-[220px] flex-1">
+            <div className="relative min-w-55 flex-1">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 value={searchText}
@@ -601,7 +662,7 @@ export default function DashboardHome() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-left">
+            <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-slate-200 text-xs font-black uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:text-slate-400">
                   <th className="px-3 py-3">Complaint ID</th>

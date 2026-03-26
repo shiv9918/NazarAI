@@ -415,16 +415,18 @@ export default function DepartmentIssueManagement() {
                       </p>
                     </div>
 
-                    {/* Model Analysis Section */}
-                    <div className="p-6 rounded-3xl bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100/50 dark:border-blue-800/20">
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-                        <h5 className="text-xs font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">OpenCV Model Summary</h5>
+                    {/* Citizen Feedback Section - Only for Reopened Issues */}
+                    {selectedIssue.is_reopened && selectedIssue.citizen_feedback && (
+                      <div className="p-6 rounded-3xl bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100/50 dark:border-amber-800/20">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                          <h5 className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest">Citizen Feedback</h5>
+                        </div>
+                        <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed font-medium">
+                          {selectedIssue.citizen_feedback}
+                        </p>
                       </div>
-                      <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed font-medium italic">
-                        {selectedIssue.aiDescription || "OpenCV model review indicates this is a significant infrastructure concern requiring priority attention."}
-                      </p>
-                    </div>
+                    )}
                   </div>
 
                   {/* Details Section */}

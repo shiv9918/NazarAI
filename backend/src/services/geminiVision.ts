@@ -176,7 +176,8 @@ async function classifyIssueTypeStrict(params: {
   const strictPrompt = [
     'Classify this civic issue image.',
     'Respond with exactly one label only from this list:',
-    'garbage, pothole, broken_streetlight, water_leakage, illegal_dump',
+    'garbage, pothole, broken_streetlight, water_leakage, illegal_dump, unknown',
+    'If the image is not a civic issue or is unclear, return unknown.',
     'Do not return JSON. Do not add explanation.',
     params.reportText ? `Citizen note: ${params.reportText}` : '',
   ].join(' ');
@@ -244,22 +245,18 @@ export async function detectIssueFromImage(params: {
   });
 
   if (!params.geminiApiKey) {
-    const inferredWithoutAI = inferIssueTypeFromKeywords(params.reportText);
-    logGemini('No GEMINI_API_KEY. Using keyword fallback only.', { inferredIssueType: inferredWithoutAI });
+    logGemini('No GEMINI_API_KEY. Returning unknown to avoid false positives.');
     return {
-      issueType: inferredWithoutAI,
-      severity: inferredWithoutAI === 'unknown' ? DEFAULT_DETECTION.severity : 5,
-      aiDescription:
-        inferredWithoutAI === 'unknown'
-          ? 'Issue detected from WhatsApp report image.'
-          : `Issue inferred from citizen note: ${inferredWithoutAI.replace(/_/g, ' ')}`,
+      issueType: 'unknown',
+      severity: DEFAULT_DETECTION.severity,
+      aiDescription: DEFAULT_DETECTION.aiDescription,
     };
   }
 
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(params.geminiApiKey)}`;
 
   const prompt = [
-    'You are classifying civic issues from a single citizen photo for municipal routing.',
+    'You are classifying civic issues from a single citizen photo for municipal routing in Indian cities.',
     'Return only JSON with keys: issueType, severity, aiDescription.',
     'issueType must be one of: garbage, pothole, broken_streetlight, water_leakage, illegal_dump, unknown.',
     'Choose the closest matching issueType from allowed list. Use unknown only when image has no visible civic issue.',
@@ -267,6 +264,21 @@ export async function detectIssueFromImage(params: {
     'Use garbage only when trash/litter is the dominant issue in the image.',
     'If road surface hole/crater is visible, prefer pothole.',
     'If street light pole/lamp is not working or broken, prefer broken_streetlight.',
+    '',
+    'SEVERITY SCORING (1-10 scale):',
+    '1-2: MINOR - No safety risk, cosmetic issue, small localized trash, very minor street damage',
+    '3-4: LOW - Small damage/issue, minimal public impact, single light out on well-lit street',
+    '5-6: MODERATE - Noticeable damage, potential inconvenience, needs fix soon (minor pothole, partial blockage)',
+    '7-8: HIGH - Safety concern, public health risk, major damage affecting traffic/safety (large pothole, blocked drainage causing flooding, multiple lights out on dark road)',
+    '9-10: CRITICAL EMERGENCY - Immediate danger to public, severe safety hazard, active hazard (large open hole in road, water gushing/flowing blocking area, total darkness on busy street, severe water overflow causing flooding)',
+    '',
+    'Severity factors to consider:',
+    '• Size/extent: Larger = higher severity',
+    '• Safety hazard: Exposed hole, dark area, water flow = higher severity',
+    '• Public impact: How many people affected, traffic disruption = higher severity',
+    '• Health/environmental risk: Water overflow, contamination = higher severity',
+    '• Urgency: How soon must it be fixed = reflects in severity',
+    '',
     'severity must be integer 1-10.',
     'aiDescription should be max 200 chars.',
     params.reportText ? `Citizen note: ${params.reportText}` : '',
@@ -312,14 +324,10 @@ export async function detectIssueFromImage(params: {
       mimeType: params.mimeType,
       reportText: params.reportText,
     });
-    const inferredOnApiError = strictRetry !== 'unknown' ? strictRetry : inferIssueTypeFromKeywords(params.reportText);
     return {
-      issueType: inferredOnApiError,
-      severity: inferredOnApiError === 'unknown' ? DEFAULT_DETECTION.severity : 5,
-      aiDescription:
-        inferredOnApiError === 'unknown'
-          ? DEFAULT_DETECTION.aiDescription
-          : `Issue inferred from citizen note due to AI API fallback: ${inferredOnApiError.replace(/_/g, ' ')}`,
+      issueType: strictRetry,
+      severity: strictRetry === 'unknown' ? DEFAULT_DETECTION.severity : 5,
+      aiDescription: DEFAULT_DETECTION.aiDescription,
     };
   }
 
@@ -332,10 +340,9 @@ export async function detectIssueFromImage(params: {
   });
 
   if (!modelText || typeof modelText !== 'string') {
-    const inferredOnEmptyText = inferIssueTypeFromKeywords(params.reportText);
     return {
-      issueType: inferredOnEmptyText,
-      severity: inferredOnEmptyText === 'unknown' ? DEFAULT_DETECTION.severity : 5,
+      issueType: 'unknown',
+      severity: DEFAULT_DETECTION.severity,
       aiDescription: DEFAULT_DETECTION.aiDescription,
     };
   }
@@ -345,10 +352,9 @@ export async function detectIssueFromImage(params: {
     logGemini('JSON parse failed. Falling back to keyword inference.', {
       modelTextPreview: modelText.slice(0, 220),
     });
-    const inferredOnParseFail = inferIssueTypeFromKeywords(params.reportText || modelText);
     return {
-      issueType: inferredOnParseFail,
-      severity: inferredOnParseFail === 'unknown' ? DEFAULT_DETECTION.severity : 5,
+      issueType: 'unknown',
+      severity: DEFAULT_DETECTION.severity,
       aiDescription: DEFAULT_DETECTION.aiDescription,
     };
   }
@@ -357,23 +363,6 @@ export async function detectIssueFromImage(params: {
   let issueType = normalizeIssueType(rawIssueType);
   const severityValue = pickNumberField(parsed, ['severity', 'priority', 'level', 'score']);
   const rawAiDescription = pickStringField(parsed, ['aiDescription', 'ai_description', 'description', 'reason', 'summary']);
-
-  // If model still returns unknown, use keyword fallback from citizen note and model description.
-  if (issueType === 'unknown') {
-    const fallbackIssueType = inferIssueTypeFromKeywords(
-      [params.reportText, rawAiDescription, modelText]
-        .filter(Boolean)
-        .join(' ')
-    );
-    if (fallbackIssueType !== 'unknown') {
-      issueType = fallbackIssueType;
-    }
-  }
-
-  // Strong leakage hints should override unknown/garbage to reduce false negatives.
-  if (hasWaterLeakageHints(params.reportText) && (issueType === 'unknown' || issueType === 'garbage')) {
-    issueType = 'water_leakage';
-  }
 
   // Final hard fallback: if still unknown, ask model for a strict single-label answer.
   if (issueType === 'unknown') {
