@@ -61,6 +61,32 @@ export default function Login() {
   const navigate = useNavigate();
   const { user, setSession } = useAuth();
 
+  const forcedPortal: 'citizen' | 'municipal' | 'department' | null = (() => {
+    if (typeof window === 'undefined') return null;
+    const host = window.location.hostname.toLowerCase();
+
+    if (host.startsWith('admin.')) return 'municipal';
+    if (host.startsWith('dept.')) return 'department';
+    if (
+      host === 'nazarai.live' ||
+      host === 'www.nazarai.live' ||
+      host === 'nazarar.live' ||
+      host === 'www.nazarar.live'
+    ) {
+      return 'citizen';
+    }
+
+    return null;
+  })();
+
+  const portalTab = forcedPortal || activeTab;
+
+  React.useEffect(() => {
+    if (forcedPortal && activeTab !== forcedPortal) {
+      setActiveTab(forcedPortal);
+    }
+  }, [forcedPortal, activeTab]);
+
   const normalizeRole = (role?: string) => (role || '').trim().toLowerCase();
 
   const resolveDashboardPath = (role?: string) => {
@@ -85,11 +111,11 @@ export default function Login() {
       const response = await postAuth<AuthResponse>('/api/auth/login', {
         email,
         password,
-        portalRole: activeTab,
-        department: activeTab === 'department' ? selectedDept : null,
+        portalRole: portalTab,
+        department: portalTab === 'department' ? selectedDept : null,
       });
 
-      if (!roleMatchesPortal(activeTab, response.user.role)) {
+      if (!roleMatchesPortal(portalTab, response.user.role)) {
         setError('Portal mismatch. Please choose the correct login portal for your role.');
         setIsLoading(false);
         return;
@@ -171,7 +197,7 @@ export default function Login() {
     setError(null);
 
     try {
-      const role = activeTab === 'municipal' ? 'municipal' : activeTab;
+      const role = portalTab === 'municipal' ? 'municipal' : portalTab;
 
       if (role === 'department' && !selectedDept) {
         setError('Please select a department.');
@@ -207,8 +233,8 @@ export default function Login() {
         
         {/* Left Side: Visual/Info */}
         <div className={`hidden lg:flex flex-col justify-between p-12 text-white relative overflow-hidden transition-colors duration-500 ${
-          activeTab === 'citizen' ? 'bg-blue-600 dark:bg-blue-700' : 
-          activeTab === 'municipal' ? 'bg-rose-600 dark:bg-rose-700' :
+          portalTab === 'citizen' ? 'bg-blue-600 dark:bg-blue-700' : 
+          portalTab === 'municipal' ? 'bg-rose-600 dark:bg-rose-700' :
           'bg-emerald-600 dark:bg-emerald-700'
         }`}>
           <div className="relative z-10">
@@ -220,22 +246,22 @@ export default function Login() {
             </Link>
             
             <motion.div
-              key={activeTab}
+              key={portalTab}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.5 }}
             >
               <h1 className="text-5xl font-black leading-tight mb-6">
-                {activeTab === 'citizen' 
+                {portalTab === 'citizen' 
                   ? t('citizen_empower')
-                  : activeTab === 'municipal'
+                  : portalTab === 'municipal'
                   ? t('municipal_manage')
                   : t('department_manage')}
               </h1>
               <p className="text-lg text-white/80 leading-relaxed max-w-md">
-                {activeTab === 'citizen'
+                {portalTab === 'citizen'
                   ? t('citizen_desc')
-                  : activeTab === 'municipal'
+                  : portalTab === 'municipal'
                   ? t('municipal_desc')
                   : t('municipal_desc')}
               </p>
@@ -280,39 +306,45 @@ export default function Login() {
 
                 {/* Role Selector */}
                 <div className="mb-8 flex rounded-2xl bg-slate-100 p-1.5 dark:bg-slate-800">
-                  <button
-                    onClick={() => setActiveTab('citizen')}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-4 text-sm font-bold transition-all ${
-                      activeTab === 'citizen'
-                        ? 'bg-white text-blue-600 shadow-lg shadow-blue-100 dark:bg-slate-700 dark:text-blue-400 dark:shadow-none'
-                        : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-                    }`}
-                  >
-                    <User size={18} />
-                    {t('citizen_portal')}
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('municipal')}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-4 text-sm font-bold transition-all ${
-                      activeTab === 'municipal'
-                        ? 'bg-white text-rose-600 shadow-lg shadow-rose-100 dark:bg-slate-700 dark:text-rose-400 dark:shadow-none'
-                        : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-                    }`}
-                  >
-                    <Shield size={18} />
-                    {t('municipal_dashboard')}
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('department')}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-4 text-sm font-bold transition-all ${
-                      activeTab === 'department'
-                        ? 'bg-white text-emerald-600 shadow-lg shadow-emerald-100 dark:bg-slate-700 dark:text-emerald-400 dark:shadow-none'
-                        : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-                    }`}
-                  >
-                    <Shield size={18} />
-                    {t('departments_login')}
-                  </button>
+                  {(!forcedPortal || forcedPortal === 'citizen') && (
+                    <button
+                      onClick={() => setActiveTab('citizen')}
+                      className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-4 text-sm font-bold transition-all ${
+                        portalTab === 'citizen'
+                          ? 'bg-white text-blue-600 shadow-lg shadow-blue-100 dark:bg-slate-700 dark:text-blue-400 dark:shadow-none'
+                          : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+                      }`}
+                    >
+                      <User size={18} />
+                      {t('citizen_portal')}
+                    </button>
+                  )}
+                  {(!forcedPortal || forcedPortal === 'municipal') && (
+                    <button
+                      onClick={() => setActiveTab('municipal')}
+                      className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-4 text-sm font-bold transition-all ${
+                        portalTab === 'municipal'
+                          ? 'bg-white text-rose-600 shadow-lg shadow-rose-100 dark:bg-slate-700 dark:text-rose-400 dark:shadow-none'
+                          : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+                      }`}
+                    >
+                      <Shield size={18} />
+                      {t('municipal_dashboard')}
+                    </button>
+                  )}
+                  {(!forcedPortal || forcedPortal === 'department') && (
+                    <button
+                      onClick={() => setActiveTab('department')}
+                      className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-4 text-sm font-bold transition-all ${
+                        portalTab === 'department'
+                          ? 'bg-white text-emerald-600 shadow-lg shadow-emerald-100 dark:bg-slate-700 dark:text-emerald-400 dark:shadow-none'
+                          : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+                      }`}
+                    >
+                      <Shield size={18} />
+                      {t('departments_login')}
+                    </button>
+                  )}
                 </div>
 
                 {error && (
@@ -323,7 +355,7 @@ export default function Login() {
                 )}
 
                 <form onSubmit={handleLogin} className="space-y-6">
-                  {activeTab === 'department' && (
+                  {portalTab === 'department' && (
                     <motion.div 
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
@@ -356,7 +388,7 @@ export default function Login() {
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder={activeTab === 'citizen' ? "citizen@delhi.gov.in" : "admin@mcd.gov.in"}
+                        placeholder={portalTab === 'citizen' ? "citizen@delhi.gov.in" : "admin@mcd.gov.in"}
                         className="w-full rounded-2xl border-none bg-slate-50 py-4.5 pl-12 pr-4 text-slate-900 ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500 transition-all outline-none dark:bg-slate-800 dark:text-white dark:ring-slate-700 dark:focus:ring-blue-400"
                       />
                     </div>
@@ -402,9 +434,9 @@ export default function Login() {
                     type="submit"
                     disabled={isLoading}
                     className={`mt-4 flex w-full items-center justify-center gap-3 rounded-2xl py-5 text-lg font-bold text-white shadow-xl transition-all active:scale-95 ${
-                      activeTab === 'citizen'
+                      portalTab === 'citizen'
                         ? 'bg-blue-600 shadow-blue-200 hover:bg-blue-700 dark:shadow-none'
-                        : activeTab === 'municipal'
+                        : portalTab === 'municipal'
                         ? 'bg-rose-600 shadow-rose-200 hover:bg-rose-700 dark:shadow-none'
                         : 'bg-emerald-600 shadow-emerald-200 hover:bg-emerald-700 dark:shadow-none'
                     } disabled:opacity-70`}
@@ -593,39 +625,45 @@ export default function Login() {
 
                 {/* Role Selector in Signup */}
                 <div className="mb-8 flex rounded-2xl bg-slate-100 p-1.5 dark:bg-slate-800">
-                  <button
-                    onClick={() => setActiveTab('citizen')}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-xs font-bold transition-all ${
-                      activeTab === 'citizen'
-                        ? 'bg-white text-blue-600 shadow-lg dark:bg-slate-700 dark:text-blue-400'
-                        : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
-                    }`}
-                  >
-                    <User size={16} />
-                    {t('citizen_portal')}
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('municipal')}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-xs font-bold transition-all ${
-                      activeTab === 'municipal'
-                        ? 'bg-white text-rose-600 shadow-lg dark:bg-slate-700 dark:text-rose-400'
-                        : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
-                    }`}
-                  >
-                    <Shield size={16} />
-                    {t('municipal_dashboard')}
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('department')}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-xs font-bold transition-all ${
-                      activeTab === 'department'
-                        ? 'bg-white text-emerald-600 shadow-lg dark:bg-slate-700 dark:text-emerald-400'
-                        : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
-                    }`}
-                  >
-                    <Shield size={16} />
-                    {t('departments_login')}
-                  </button>
+                  {(!forcedPortal || forcedPortal === 'citizen') && (
+                    <button
+                      onClick={() => setActiveTab('citizen')}
+                      className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-xs font-bold transition-all ${
+                        portalTab === 'citizen'
+                          ? 'bg-white text-blue-600 shadow-lg dark:bg-slate-700 dark:text-blue-400'
+                          : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                      }`}
+                    >
+                      <User size={16} />
+                      {t('citizen_portal')}
+                    </button>
+                  )}
+                  {(!forcedPortal || forcedPortal === 'municipal') && (
+                    <button
+                      onClick={() => setActiveTab('municipal')}
+                      className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-xs font-bold transition-all ${
+                        portalTab === 'municipal'
+                          ? 'bg-white text-rose-600 shadow-lg dark:bg-slate-700 dark:text-rose-400'
+                          : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                      }`}
+                    >
+                      <Shield size={16} />
+                      {t('municipal_dashboard')}
+                    </button>
+                  )}
+                  {(!forcedPortal || forcedPortal === 'department') && (
+                    <button
+                      onClick={() => setActiveTab('department')}
+                      className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-xs font-bold transition-all ${
+                        portalTab === 'department'
+                          ? 'bg-white text-emerald-600 shadow-lg dark:bg-slate-700 dark:text-emerald-400'
+                          : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                      }`}
+                    >
+                      <Shield size={16} />
+                      {t('departments_login')}
+                    </button>
+                  )}
                 </div>
 
                 {error && (
@@ -706,7 +744,7 @@ export default function Login() {
                       </div>
                     </div>
 
-                    {activeTab === 'department' && (
+                    {portalTab === 'department' && (
                       <div className="space-y-2">
                         <label className="text-xs font-bold uppercase tracking-wider text-slate-400 ml-1 dark:text-slate-500">{t('select_department')}</label>
                         <select

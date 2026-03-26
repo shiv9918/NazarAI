@@ -27,6 +27,9 @@ const DepartmentIssueManagement = lazy(() => import('./pages/dashboard/Departmen
 import OfflineBanner from './components/OfflineBanner';
 
 export default function App() {
+  const host = typeof window !== 'undefined' ? window.location.hostname.toLowerCase() : '';
+  const isPortalSubdomain = host.startsWith('admin.') || host.startsWith('dept.');
+
   return (
     <ThemeProvider>
           <Router>
@@ -37,7 +40,7 @@ export default function App() {
                   <main className="flex-1">
                     <Suspense fallback={<div className="flex h-screen items-center justify-center bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-50">Loading...</div>}>
                       <Routes>
-                        <Route path="/" element={<Home />} />
+                        <Route path="/" element={isPortalSubdomain ? <Login /> : <Home />} />
                         <Route path="/login" element={<Login />} />
                         
                         {/* Citizen Portal Routes with Sidebar */}
