@@ -89,11 +89,19 @@ type PendingFeedbackRow = {
 
 function departmentToLabel(department: string) {
   const map: Record<string, string> = {
-    roads: 'Roads Department',
+    pwd: 'PWD (Public Works Department)',
+    bses: 'BSES / NDMC (Electrical)',
+    djb: 'DJB (Delhi Jal Board)',
+    traffic_police: 'Traffic Police',
+    forest_dept: 'Forest Department',
+    fire_services: 'Delhi Fire Services',
     sanitation: 'Sanitation Department',
-    electrical: 'Electrical Department',
-    water: 'Water Department',
-    administration: 'Administration Department',
+    administration: 'Municipal Administration',
+    
+    // Legacy mappings for backward compatibility
+    roads: 'PWD (Public Works Department)',
+    electrical: 'BSES / NDMC (Electrical)',
+    water: 'DJB (Delhi Jal Board)',
   };
 
   return map[department] || `${department} Department`;

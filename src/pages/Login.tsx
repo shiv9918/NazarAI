@@ -337,9 +337,12 @@ export default function Login() {
                         className="w-full rounded-2xl border-none bg-slate-50 py-4.5 px-4 text-slate-900 ring-1 ring-slate-200 focus:ring-2 focus:ring-emerald-500 transition-all outline-none dark:bg-slate-800 dark:text-white dark:ring-slate-700 dark:focus:ring-emerald-400"
                       >
                         <option value="" disabled>{t('select_department')}</option>
-                        <option value="water">{t('water_dept')}</option>
-                        <option value="road">{t('road_dept')}</option>
-                        <option value="electrical">{t('electrical_dept')}</option>
+                        <option value="pwd">{t('pwd_dept')}</option>
+                        <option value="bses">{t('bses_dept')}</option>
+                        <option value="djb">{t('djb_dept')}</option>
+                        <option value="traffic_police">{t('traffic_police_dept')}</option>
+                        <option value="forest_dept">{t('forest_dept')}</option>
+                        <option value="fire_services">{t('fire_services_dept')}</option>
                         <option value="sanitation">{t('sanitation_dept')}</option>
                       </select>
                     </motion.div>
@@ -713,9 +716,12 @@ export default function Login() {
                           className="w-full rounded-2xl border-none bg-slate-50 py-4 px-4 text-slate-900 ring-1 ring-slate-200 focus:ring-2 focus:ring-emerald-500 transition-all outline-none dark:bg-slate-800 dark:text-white dark:ring-slate-700 dark:focus:ring-emerald-400"
                         >
                           <option value="" disabled>{t('select_department')}</option>
-                          <option value="water">{t('water_dept')}</option>
-                          <option value="road">{t('road_dept')}</option>
-                          <option value="electrical">{t('electrical_dept')}</option>
+                          <option value="pwd">{t('pwd_dept')}</option>
+                          <option value="bses">{t('bses_dept')}</option>
+                          <option value="djb">{t('djb_dept')}</option>
+                          <option value="traffic_police">{t('traffic_police_dept')}</option>
+                          <option value="forest_dept">{t('forest_dept')}</option>
+                          <option value="fire_services">{t('fire_services_dept')}</option>
                           <option value="sanitation">{t('sanitation_dept')}</option>
                         </select>
                       </div>

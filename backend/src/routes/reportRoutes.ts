@@ -68,15 +68,38 @@ const updateReportSchema = z.object({
 });
 
 const allowedIssueTypes = new Set([
+  // PWD (Public Works Dept) - Roads
   'pothole',
-  'garbage_overflow',
+  'road_damage',
+  'road_crack',
+  
+  // BSES / NDMC - Electrical & Wires
   'broken_streetlight',
-  'water_leakage',
-  'illegal_dumping',
-  'fallen_tree',
+  'street_light',
   'hanging_wire',
-  'park_broken_equipment',
-  'public_bench_broken',
+  'light_outage',
+  
+  // DJB (Delhi Jal Board) - Water & Sewage
+  'water_leakage',
+  'pipe_burst',
+  'sewage_leak',
+  'waterlogging',
+  
+  // Traffic Police
+  'traffic_signal',
+  
+  // Forest Department
+  'fallen_tree',
+  'tree_gira',
+  
+  // Delhi Fire Services
+  'fire',
+  'accident',
+  
+  // Sanitation Department
+  'garbage_overflow',
+  'illegal_dumping',
+  'dump',
 ]);
 
 

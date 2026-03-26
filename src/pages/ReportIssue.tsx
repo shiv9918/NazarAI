@@ -19,38 +19,79 @@ import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
 const ISSUE_OPTIONS = [
-  { id: 'pothole', name: 'Pothole', department: 'roads', severity: 7 },
+  // PWD (Public Works Department) - Roads
+  { id: 'pothole', name: 'Pothole / Road Damage', department: 'pwd', severity: 7 },
+  
+  // BSES / NDMC - Electrical & Wires
+  { id: 'broken_streetlight', name: 'Broken Streetlight', department: 'bses', severity: 5 },
+  { id: 'hanging_wire', name: 'Hanging Wire', department: 'bses', severity: 9 },
+  
+  // DJB (Delhi Jal Board) - Water & Sewage
+  { id: 'water_leakage', name: 'Water Leakage / Pipe Burst', department: 'djb', severity: 8 },
+  
+  // Traffic Police
+  { id: 'traffic_signal', name: 'Traffic Signal Issue', department: 'traffic_police', severity: 6 },
+  
+  // Forest Department
+  { id: 'fallen_tree', name: 'Fallen Tree', department: 'forest_dept', severity: 8 },
+  
+  // Delhi Fire Services
+  { id: 'fire', name: 'Fire / Emergency', department: 'fire_services', severity: 10 },
+  
+  // Sanitation Department
   { id: 'garbage_overflow', name: 'Garbage Overflow', department: 'sanitation', severity: 6 },
-  { id: 'broken_streetlight', name: 'Broken Streetlight', department: 'electrical', severity: 5 },
-  { id: 'water_leakage', name: 'Water Leakage', department: 'water', severity: 8 },
   { id: 'illegal_dumping', name: 'Illegal Dumping', department: 'sanitation', severity: 9 },
-  { id: 'fallen_tree', name: 'Fallen Tree', department: 'administration', severity: 8 },
-  { id: 'hanging_wire', name: 'Hanging Wire', department: 'electrical', severity: 9 },
-  { id: 'park_broken_equipment', name: 'Park Broken Equipment', department: 'administration', severity: 6 },
-  { id: 'public_bench_broken', name: 'Public Bench Broken', department: 'administration', severity: 4 },
 ];
 
 const ALLOWED_ISSUE_TYPE_SET = new Set(ISSUE_OPTIONS.map((option) => option.id));
 
 const ISSUE_TYPE_NORMALIZATION: Record<string, string> = {
+  // PWD (Roads)
   pothole: 'pothole',
-  garbage: 'garbage_overflow',
-  garbage_overflow: 'garbage_overflow',
+  potholes: 'pothole',
   road: 'pothole',
+  road_damage: 'pothole',
+  road_crack: 'pothole',
+  
+  // BSES (Electrical)
   streetlight: 'broken_streetlight',
   broken_streetlight: 'broken_streetlight',
-  water: 'water_leakage',
-  leakage: 'water_leakage',
-  water_leakage: 'water_leakage',
-  illegal_dumping: 'illegal_dumping',
-  dumping: 'illegal_dumping',
-  fallen_tree: 'fallen_tree',
-  tree: 'fallen_tree',
+  street_light: 'broken_streetlight',
+  light_not_working: 'broken_streetlight',
+  light_outage: 'broken_streetlight',
   hanging_wire: 'hanging_wire',
   wire: 'hanging_wire',
-  park_broken_equipment: 'park_broken_equipment',
-  bench_broken: 'public_bench_broken',
-  public_bench_broken: 'public_bench_broken',
+  electrical_wire: 'hanging_wire',
+  
+  // DJB (Water)
+  water: 'water_leakage',
+  water_leakage: 'water_leakage',
+  leakage: 'water_leakage',
+  pipe_burst: 'water_leakage',
+  sewage_leak: 'water_leakage',
+  waterlogging: 'water_leakage',
+  
+  // Traffic Police
+  traffic: 'traffic_signal',
+  traffic_signal: 'traffic_signal',
+  signal: 'traffic_signal',
+  
+  // Forest Department
+  fallen_tree: 'fallen_tree',
+  tree: 'fallen_tree',
+  tree_gira: 'fallen_tree',
+  
+  // Fire Services
+  fire: 'fire',
+  accident: 'fire',
+  aag: 'fire',
+  
+  // Sanitation
+  garbage: 'garbage_overflow',
+  garbage_overflow: 'garbage_overflow',
+  illegal_dumping: 'illegal_dumping',
+  dumping: 'illegal_dumping',
+  dump: 'illegal_dumping',
 };
 
 function normalizeIssueType(issueType?: string | null): string | null {
