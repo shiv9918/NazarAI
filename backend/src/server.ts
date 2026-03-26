@@ -37,6 +37,8 @@ async function startServer() {
   await runMigrations();
 
   const app = express();
+  // Respect proxy headers on platforms like Render so req.ip is the real client IP.
+  app.set('trust proxy', 1);
 
   app.use(cors({
     origin: (origin, callback) => {
@@ -58,15 +60,27 @@ async function startServer() {
   app.use(express.json({ limit: '20mb' }));
   app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
-  // Rate limiting middleware
+  // General API rate limiting middleware.
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
+    max: 300, // limit each IP to 300 requests per windowMs
     message: 'Too many requests from this IP, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
+    // Keep auth login independent from general API throttling.
+    skip: (req) => req.originalUrl.startsWith('/api/auth/login'),
   });
   app.use('/api/', limiter);
+
+  // Login-specific limiter: restrict brute-force while avoiding false positives for normal usage.
+  const authLoginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20,
+    message: 'Too many login attempts. Please wait a few minutes and try again.',
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true,
+  });
 
   // Stricter rate limiting for reports (polling endpoints)
   const reportsLimiter = rateLimit({
@@ -81,6 +95,7 @@ async function startServer() {
     res.json({ ok: true, service: 'nazarai-backend' });
   });
 
+  app.use('/api/auth/login', authLoginLimiter);
   app.use('/api/auth', authRoutes);
   app.use('/api/reports', reportsLimiter, reportRoutes);
   app.use('/api/whatsapp', whatsappRoutes);
