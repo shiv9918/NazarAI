@@ -111,6 +111,12 @@ function normalizeIssueType(issueType?: string | null): string | null {
   return null;
 }
 
+function getDepartmentFromIssueType(issueType?: string | null): string | null {
+  if (!issueType) return null;
+  const match = ISSUE_OPTIONS.find((option) => option.id === issueType);
+  return match?.department || null;
+}
+
 function formatIssueType(issueType: string | null | undefined) {
   if (!issueType) return 'Unknown';
   return issueType.replace(/_/g, ' ');
@@ -210,6 +216,7 @@ export default function ReportIssue() {
             setDetection({
               ...result,
               issueType,
+              department: getDepartmentFromIssueType(issueType) || result?.department || null,
               confidence,
             });
             setInvalidDetectionMessage(null);
