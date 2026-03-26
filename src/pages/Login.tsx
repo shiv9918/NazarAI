@@ -602,7 +602,7 @@ export default function Login() {
                     }`}
                   >
                     <User size={16} />
-                    {t('citizen')}
+                    {t('citizen_portal')}
                   </button>
                   <button
                     onClick={() => setActiveTab('municipal')}
@@ -613,7 +613,7 @@ export default function Login() {
                     }`}
                   >
                     <Shield size={16} />
-                    {t('municipal')}
+                    {t('municipal_dashboard')}
                   </button>
                   <button
                     onClick={() => setActiveTab('department')}
@@ -624,7 +624,7 @@ export default function Login() {
                     }`}
                   >
                     <Shield size={16} />
-                    {t('department')}
+                    {t('departments_login')}
                   </button>
                 </div>
 

@@ -5,7 +5,7 @@ import { MapPin, CheckCircle2, Loader2, AlertCircle, TrendingUp, Upload, Camera,
 import { useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import imageCompression from 'browser-image-compression';
-import { getAddressFromCoords, getCurrentPosition } from '../utils/location';
+import { getCurrentPosition } from '../utils/location';
 import { analyzeIssueImage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
 
@@ -155,6 +155,8 @@ export default function ReportIssue() {
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [invalidDetectionMessage, setInvalidDetectionMessage] = useState<string | null>(null);
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -237,6 +239,8 @@ export default function ReportIssue() {
   };
 
   const detectLocation = async () => {
+    setIsDetectingLocation(true);
+    setLocationError(null);
     try {
       const pos = await getCurrentPosition();
       const lat = pos.coords.latitude;
@@ -260,14 +264,18 @@ export default function ReportIssue() {
       setIsDuplicate(Math.random() > 0.85);
     } catch (error) {
       console.error("Error detecting location:", error);
-      // Fallback to a safe default but mark as fallback
-      const lat = 28.6139;
-      const lng = 77.2090;
-      const address = "Connaught Place, New Delhi";
-      const ward = "Ward - New Delhi";
-      setLocation({ lat, lng, address, ward });
+      setLocation(null);
+      setLocationError("Unable to fetch current location. Please allow location permission and try again.");
+    } finally {
+      setIsDetectingLocation(false);
     }
   };
+
+  useEffect(() => {
+    if (step === 3 && !location && !isDetectingLocation) {
+      detectLocation();
+    }
+  }, [step, location, isDetectingLocation]);
 
   const handleSubmit = async () => {
     if (!user) {
@@ -285,6 +293,12 @@ export default function ReportIssue() {
     if (!selectedType || !ALLOWED_ISSUE_TYPE_SET.has(selectedType)) {
       alert('Invalid image. Please attach a valid civic issue image before submitting.');
       setStep(2);
+      return;
+    }
+
+    if (!location?.lat || !location?.lng) {
+      alert('Current location is required. Please enable GPS/location permission and try again.');
+      setStep(3);
       return;
     }
 
@@ -317,10 +331,10 @@ export default function ReportIssue() {
           id: reportId,
           type,
           severity,
-          lat: location?.lat || 28.6139,
-          lng: location?.lng || 77.2090,
-          location: location?.address || "New Delhi",
-          ward: location?.ward || "Central Ward",
+          lat: location.lat,
+          lng: location.lng,
+          location: location?.address || `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
+          ward: location?.ward || 'Ward - Unknown',
           department: detection?.department || null,
           description: description,
           imageUrl: finalImageUrl,
@@ -529,8 +543,25 @@ export default function ReportIssue() {
             <div className="relative h-80 rounded-[2.5rem] overflow-hidden shadow-2xl mb-6 border-4 border-white dark:border-slate-800">
               {!location ? (
                 <div className="absolute inset-0 bg-slate-100 dark:bg-slate-900 flex flex-col items-center justify-center">
-                  <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
-                  <p className="font-bold text-slate-500">Detecting your location...</p>
+                  {isDetectingLocation ? (
+                    <>
+                      <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
+                      <p className="font-bold text-slate-500">Detecting your current location...</p>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="text-amber-500 mb-3" size={34} />
+                      <p className="font-bold text-slate-600 text-center px-6">
+                        {locationError || 'Location not available yet.'}
+                      </p>
+                      <button
+                        onClick={detectLocation}
+                        className="mt-4 px-5 py-2 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition-colors"
+                      >
+                        Use Current Location
+                      </button>
+                    </>
+                  )}
                 </div>
               ) : (
                 <MapContainer 
@@ -573,8 +604,12 @@ export default function ReportIssue() {
                 <input 
                   type="text"
                   value={location?.address || ""}
-                  onChange={(e) => setLocation({ ...location, address: e.target.value })}
+                  onChange={(e) => {
+                    if (!location) return;
+                    setLocation({ ...location, address: e.target.value });
+                  }}
                   placeholder="Enter address manually..."
+                  disabled={!location}
                   className="w-full bg-slate-50 border-none rounded-2xl p-4 pl-12 text-sm font-bold dark:bg-slate-800 dark:text-white"
                 />
                 <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -590,6 +625,7 @@ export default function ReportIssue() {
               </button>
               <button
                 onClick={() => setStep(4)}
+                disabled={!location || isDetectingLocation}
                 className="flex-[2] py-4 rounded-2xl bg-blue-600 text-white font-bold shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all"
               >
                 {t('next_step')}
