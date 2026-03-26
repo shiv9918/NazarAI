@@ -525,7 +525,13 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
 
   const reportId = inserted.rows[0]?.id;
   const complaintCode = inserted.rows[0]?.complaint_code || reportId;
-  const trackBaseUrl = env.frontendBaseUrl.replace(/\/$/, '');
+  const configuredTrackBase = env.whatsappTrackBaseUrl?.trim() || '';
+  const fallbackTrackBase = env.frontendBaseUrl?.trim() || '';
+  const selectedTrackBase = configuredTrackBase || fallbackTrackBase;
+  const safeTrackBase = /localhost|127\.0\.0\.1/i.test(selectedTrackBase)
+    ? 'https://www.nazarai.live'
+    : selectedTrackBase;
+  const trackBaseUrl = safeTrackBase.replace(/\/$/, '');
   const trackUrl = `${trackBaseUrl}/track?id=${encodeURIComponent(complaintCode || '')}`;
   const confirmationMessage = `Thanks! Your report has been registered. Complaint ID: ${complaintCode}. Issue type: ${normalizedIssueType}. Assigned department: ${assignedDepartment}. Track your report: ${trackUrl}`;
   const confirmationResult = await sendTwilioWhatsAppMessageDetailed({
