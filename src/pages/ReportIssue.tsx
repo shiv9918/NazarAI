@@ -161,8 +161,30 @@ export default function ReportIssue() {
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [invalidDetectionMessage, setInvalidDetectionMessage] = useState<string | null>(null);
+  const [manualIssueType, setManualIssueType] = useState<string>('');
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+
+  const handleDetectionNextStep = () => {
+    if (invalidDetectionMessage) {
+      if (!manualIssueType) {
+        return;
+      }
+
+      setDetection((prev: any) => ({
+        ...(prev || {}),
+        detected: true,
+        issueType: manualIssueType,
+        department: getDepartmentFromIssueType(manualIssueType),
+        confidence: Math.max(0.35, Number(prev?.confidence) || 0),
+        severity: Number(prev?.severity) || 6,
+      }));
+      setInvalidDetectionMessage(null);
+      detectLocation();
+    }
+
+    setStep(3);
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -184,6 +206,7 @@ export default function ReportIssue() {
           setUploadedImageUrl(base64);
           setIsAnalyzing(true);
           setInvalidDetectionMessage(null);
+          setManualIssueType('');
           setStep(2); // Move to detection step immediately to show loading
 
           try {
@@ -521,6 +544,24 @@ export default function ReportIssue() {
                     </p>
                   </div>
                 )}
+
+                {invalidDetectionMessage && (
+                  <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 dark:border-blue-900/40 dark:bg-blue-900/20">
+                    <p className="mb-2 text-xs font-bold text-blue-700 dark:text-blue-300">
+                      Select issue type manually to continue:
+                    </p>
+                    <select
+                      value={manualIssueType}
+                      onChange={(e) => setManualIssueType(e.target.value)}
+                      className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 dark:border-blue-800 dark:bg-slate-900 dark:text-slate-100"
+                    >
+                      <option value="">Select issue type...</option>
+                      {ISSUE_OPTIONS.map((option) => (
+                        <option key={option.id} value={option.id}>{option.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             )}
 
@@ -532,8 +573,8 @@ export default function ReportIssue() {
                 {t('retake')}
               </button>
               <button
-                onClick={() => setStep(3)}
-                disabled={isAnalyzing || Boolean(invalidDetectionMessage)}
+                onClick={handleDetectionNextStep}
+                disabled={isAnalyzing || (Boolean(invalidDetectionMessage) && !manualIssueType)}
                 className="flex-[2] py-4 rounded-2xl bg-blue-600 text-white font-bold shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all disabled:opacity-50"
               >
                 {t('next_step')}

@@ -254,6 +254,20 @@ const WHATSAPP_ISSUE_TO_DEPARTMENT: Record<string, string> = {
   public_bench_broken: 'administration',
 };
 
+function inferWhatsappIssueTypeFromText(text: string) {
+  const t = text.toLowerCase();
+
+  if (/(water|leak|leakage|pipe|pipeline|sewage|drain|pani|nal)/i.test(t)) return 'water_leakage';
+  if (/(pothole|potholes|gaddha|road\s*crack|road\s*damage|sadak)/i.test(t)) return 'pothole';
+  if (/(street\s*light|streetlight|light\s*out|not\s*working\s*light|bijli)/i.test(t)) return 'broken_streetlight';
+  if (/(garbage|trash|waste|kachra|litter|dustbin)/i.test(t)) return 'garbage_overflow';
+  if (/(illegal\s*dump|dumping|debris|construction\s*waste|malba)/i.test(t)) return 'illegal_dumping';
+  if (/(fallen\s*tree|tree\s*fallen|ped\s*gira|tree\s*down)/i.test(t)) return 'fallen_tree';
+  if (/(hanging\s*wire|loose\s*wire|wire\s*down|bijli\s*taar)/i.test(t)) return 'hanging_wire';
+
+  return null;
+}
+
 function normalizeWhatsappIssueType(rawType: string | null | undefined) {
   if (!rawType) {
     return null;
@@ -380,12 +394,16 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
     hasGeminiKey: Boolean(env.geminiApiKey),
   });
 
-  const normalizedIssueType = normalizeWhatsappIssueType(detection.issueType);
+  let normalizedIssueType = normalizeWhatsappIssueType(detection.issueType);
+  if (!normalizedIssueType) {
+    normalizedIssueType = inferWhatsappIssueTypeFromText(payload.bodyText || '');
+  }
+
   if (!normalizedIssueType) {
     await clearWhatsappSession(payload.citizen.id, normalizePhone(stripWhatsappPrefix(payload.from)));
     await sendTwilioWhatsAppMessage({
       to: payload.from,
-      message: 'This is not a civic issue. Please add a valid issue.',
+      message: 'We could not classify the issue from this photo. Please resend a clearer photo and mention issue type (e.g., pothole, water leakage, garbage, broken streetlight).',
     });
     return;
   }

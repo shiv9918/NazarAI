@@ -245,9 +245,12 @@ export async function detectIssueFromImage(params: {
   });
 
   if (!params.geminiApiKey) {
-    logGemini('No GEMINI_API_KEY. Returning unknown to avoid false positives.');
+    const textFallback = inferIssueTypeFromKeywords(params.reportText || '');
+    logGemini('No GEMINI_API_KEY. Using text fallback when possible.', {
+      textFallback,
+    });
     return {
-      issueType: 'unknown',
+      issueType: textFallback,
       severity: DEFAULT_DETECTION.severity,
       aiDescription: DEFAULT_DETECTION.aiDescription,
     };
@@ -340,8 +343,20 @@ export async function detectIssueFromImage(params: {
   });
 
   if (!modelText || typeof modelText !== 'string') {
+    logGemini('Model returned no text. Running strict retry.');
+    const strictRetry = await classifyIssueTypeStrict({
+      endpoint,
+      imageBase64: params.imageBase64,
+      mimeType: params.mimeType,
+      reportText: params.reportText,
+    });
+
+    const fallbackIssue = strictRetry !== 'unknown'
+      ? strictRetry
+      : inferIssueTypeFromKeywords(params.reportText || '');
+
     return {
-      issueType: 'unknown',
+      issueType: fallbackIssue,
       severity: DEFAULT_DETECTION.severity,
       aiDescription: DEFAULT_DETECTION.aiDescription,
     };
@@ -352,8 +367,22 @@ export async function detectIssueFromImage(params: {
     logGemini('JSON parse failed. Falling back to keyword inference.', {
       modelTextPreview: modelText.slice(0, 220),
     });
+
+    const strictRetry = await classifyIssueTypeStrict({
+      endpoint,
+      imageBase64: params.imageBase64,
+      mimeType: params.mimeType,
+      reportText: params.reportText,
+    });
+
+    const fallbackFromModelText = inferIssueTypeFromKeywords(modelText);
+    const fallbackFromReportText = inferIssueTypeFromKeywords(params.reportText || '');
+    const fallbackIssue = strictRetry !== 'unknown'
+      ? strictRetry
+      : (fallbackFromModelText !== 'unknown' ? fallbackFromModelText : fallbackFromReportText);
+
     return {
-      issueType: 'unknown',
+      issueType: fallbackIssue,
       severity: DEFAULT_DETECTION.severity,
       aiDescription: DEFAULT_DETECTION.aiDescription,
     };
