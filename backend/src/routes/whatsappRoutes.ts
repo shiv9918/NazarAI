@@ -4,7 +4,7 @@ import { pool } from '../config/db';
 import { env } from '../config/env';
 import { assignDepartment } from '../utils/reportAssignment';
 import { detectIssueFromImage } from '../services/geminiVision';
-import { sendTwilioWhatsAppMessage } from '../services/twilioWhatsapp';
+import { sendTwilioWhatsAppMessage, sendTwilioWhatsAppMessageDetailed } from '../services/twilioWhatsapp';
 import { handleIncomingResolutionFeedback, handleReopenedComplaintDetailedFeedback } from '../services/whatsappResolutionFlow';
 import { reverseGeocodeCoordinates } from '../services/geocodingService';
 
@@ -390,6 +390,8 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
     issueType: detection.issueType,
     severity: detection.severity,
     aiDescription: detection.aiDescription?.slice(0, 160),
+    diagnosticCode: detection.diagnosticCode,
+    geminiStatus: detection.geminiStatus,
     mimeType: image.mimeType,
     hasGeminiKey: Boolean(env.geminiApiKey),
   });
@@ -400,10 +402,20 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
   }
 
   if (!normalizedIssueType) {
+    let classificationMessage = 'We could not classify the issue from this photo. Please resend a clearer photo and mention issue type (e.g., pothole, water leakage, garbage, broken streetlight).';
+
+    if (detection.diagnosticCode === 'missing_api_key') {
+      classificationMessage = 'AI classification is temporarily unavailable (server key missing). Please mention issue type in text with the image (e.g., water leakage, pothole), and we will register it.';
+    } else if (detection.diagnosticCode === 'gemini_quota_exceeded') {
+      classificationMessage = 'AI image limit is currently reached. Please resend with issue text (e.g., "water leakage") so we can still register your complaint.';
+    } else if (detection.diagnosticCode === 'gemini_access_denied') {
+      classificationMessage = 'AI service authentication failed temporarily. Please resend with issue text (e.g., pothole, garbage) and we will process manually.';
+    }
+
     await clearWhatsappSession(payload.citizen.id, normalizePhone(stripWhatsappPrefix(payload.from)));
     await sendTwilioWhatsAppMessage({
       to: payload.from,
-      message: 'We could not classify the issue from this photo. Please resend a clearer photo and mention issue type (e.g., pothole, water leakage, garbage, broken streetlight).',
+      message: classificationMessage,
     });
     return;
   }
@@ -516,21 +528,32 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
   const trackBaseUrl = env.frontendBaseUrl.replace(/\/$/, '');
   const trackUrl = `${trackBaseUrl}/track?id=${encodeURIComponent(complaintCode || '')}`;
   const confirmationMessage = `Thanks! Your report has been registered. Complaint ID: ${complaintCode}. Issue type: ${normalizedIssueType}. Assigned department: ${assignedDepartment}. Track your report: ${trackUrl}`;
-  const confirmationSent = await sendTwilioWhatsAppMessage({
+  const confirmationResult = await sendTwilioWhatsAppMessageDetailed({
     to: payload.from,
     message: confirmationMessage,
   });
 
-  if (!confirmationSent) {
+  if (!confirmationResult.ok) {
     console.warn('[WhatsApp] Primary confirmation failed. Retrying with shorter message.', {
       complaintCode,
       to: payload.from,
+      internalReason: confirmationResult.internalReason,
+      providerCode: confirmationResult.providerCode,
+      providerMessage: confirmationResult.providerMessage,
     });
 
-    await sendTwilioWhatsAppMessage({
+    const shortRetry = await sendTwilioWhatsAppMessageDetailed({
       to: payload.from,
       message: `Complaint registered. ID: ${complaintCode}. Type: ${normalizedIssueType}. Dept: ${assignedDepartment}.`,
     });
+
+    if (!shortRetry.ok && (shortRetry.internalReason === 'TWILIO_RATE_LIMITED' || shortRetry.providerCode === 20429 || shortRetry.httpStatus === 429)) {
+      // Try once with a dedicated limit notice so the user knows complaint is saved.
+      await sendTwilioWhatsAppMessageDetailed({
+        to: payload.from,
+        message: `Your complaint is registered (ID: ${complaintCode}), but WhatsApp delivery is delayed due to provider message limit. Please check again shortly.`,
+      });
+    }
   }
 
   await clearWhatsappSession(payload.citizen.id, normalizePhone(stripWhatsappPrefix(payload.from)));

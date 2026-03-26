@@ -2,6 +2,15 @@ type VisionDetection = {
   issueType: string;
   severity: number;
   aiDescription: string;
+  diagnosticCode?:
+    | 'ok'
+    | 'missing_api_key'
+    | 'gemini_quota_exceeded'
+    | 'gemini_access_denied'
+    | 'gemini_request_failed'
+    | 'no_model_text'
+    | 'model_output_parse_failed';
+  geminiStatus?: number;
 };
 
 type IssueType = 'garbage' | 'pothole' | 'broken_streetlight' | 'water_leakage' | 'illegal_dump' | 'unknown';
@@ -253,6 +262,7 @@ export async function detectIssueFromImage(params: {
       issueType: textFallback,
       severity: DEFAULT_DETECTION.severity,
       aiDescription: DEFAULT_DETECTION.aiDescription,
+      diagnosticCode: 'missing_api_key',
     };
   }
 
@@ -263,7 +273,9 @@ export async function detectIssueFromImage(params: {
     'Return only JSON with keys: issueType, severity, aiDescription.',
     'issueType must be one of: garbage, pothole, broken_streetlight, water_leakage, illegal_dump, unknown.',
     'Choose the closest matching issueType from allowed list. Use unknown only when image has no visible civic issue.',
+    'Do not overuse unknown. If any visible issue exists, pick the closest label.',
     'If visible flowing/spraying water from pipe/tap/drain is present, prefer water_leakage (not garbage).',
+    'Even if scene is indoor or private-looking, visible active water leakage/spray still maps to water_leakage.',
     'Use garbage only when trash/litter is the dominant issue in the image.',
     'If road surface hole/crater is visible, prefer pothole.',
     'If street light pole/lamp is not working or broken, prefer broken_streetlight.',
@@ -316,9 +328,14 @@ export async function detectIssueFromImage(params: {
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => '');
+    const diagnosticCode = response.status === 429
+      ? 'gemini_quota_exceeded'
+      : (response.status === 401 || response.status === 403 ? 'gemini_access_denied' : 'gemini_request_failed');
+
     logGemini('Primary API call failed', {
       status: response.status,
       statusText: response.statusText,
+      diagnosticCode,
       errorPreview: errorBody.slice(0, 400),
     });
     const strictRetry = await classifyIssueTypeStrict({
@@ -331,6 +348,8 @@ export async function detectIssueFromImage(params: {
       issueType: strictRetry,
       severity: strictRetry === 'unknown' ? DEFAULT_DETECTION.severity : 5,
       aiDescription: DEFAULT_DETECTION.aiDescription,
+      diagnosticCode,
+      geminiStatus: response.status,
     };
   }
 
@@ -359,6 +378,7 @@ export async function detectIssueFromImage(params: {
       issueType: fallbackIssue,
       severity: DEFAULT_DETECTION.severity,
       aiDescription: DEFAULT_DETECTION.aiDescription,
+      diagnosticCode: 'no_model_text',
     };
   }
 
@@ -385,6 +405,7 @@ export async function detectIssueFromImage(params: {
       issueType: fallbackIssue,
       severity: DEFAULT_DETECTION.severity,
       aiDescription: DEFAULT_DETECTION.aiDescription,
+      diagnosticCode: 'model_output_parse_failed',
     };
   }
 
@@ -421,5 +442,6 @@ export async function detectIssueFromImage(params: {
       typeof rawAiDescription === 'string' && rawAiDescription.trim().length
         ? rawAiDescription.trim().slice(0, 200)
         : DEFAULT_DETECTION.aiDescription,
+    diagnosticCode: 'ok',
   };
 }
