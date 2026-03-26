@@ -5,7 +5,7 @@ import { MapPin, CheckCircle2, Loader2, AlertCircle, TrendingUp, Upload, Camera,
 import { useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import imageCompression from 'browser-image-compression';
-import { getAddressFromCoords, getCurrentPosition } from '../utils/location';
+import { getCurrentPosition } from '../utils/location';
 import { analyzeIssueImage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
 
@@ -111,6 +111,12 @@ function normalizeIssueType(issueType?: string | null): string | null {
   return null;
 }
 
+function getDepartmentFromIssueType(issueType?: string | null): string | null {
+  if (!issueType) return null;
+  const match = ISSUE_OPTIONS.find((option) => option.id === issueType);
+  return match?.department || null;
+}
+
 function formatIssueType(issueType: string | null | undefined) {
   if (!issueType) return 'Unknown';
   return issueType.replace(/_/g, ' ');
@@ -155,6 +161,8 @@ export default function ReportIssue() {
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [invalidDetectionMessage, setInvalidDetectionMessage] = useState<string | null>(null);
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -208,6 +216,7 @@ export default function ReportIssue() {
             setDetection({
               ...result,
               issueType,
+              department: getDepartmentFromIssueType(issueType) || result?.department || null,
               confidence,
             });
             setInvalidDetectionMessage(null);
@@ -237,6 +246,8 @@ export default function ReportIssue() {
   };
 
   const detectLocation = async () => {
+    setIsDetectingLocation(true);
+    setLocationError(null);
     try {
       const pos = await getCurrentPosition();
       const lat = pos.coords.latitude;
@@ -260,14 +271,18 @@ export default function ReportIssue() {
       setIsDuplicate(Math.random() > 0.85);
     } catch (error) {
       console.error("Error detecting location:", error);
-      // Fallback to a safe default but mark as fallback
-      const lat = 28.6139;
-      const lng = 77.2090;
-      const address = "Connaught Place, New Delhi";
-      const ward = "Ward - New Delhi";
-      setLocation({ lat, lng, address, ward });
+      setLocation(null);
+      setLocationError("Unable to fetch current location. Please allow location permission and try again.");
+    } finally {
+      setIsDetectingLocation(false);
     }
   };
+
+  useEffect(() => {
+    if (step === 3 && !location && !isDetectingLocation) {
+      detectLocation();
+    }
+  }, [step, location, isDetectingLocation]);
 
   const handleSubmit = async () => {
     if (!user) {
@@ -285,6 +300,17 @@ export default function ReportIssue() {
     if (!selectedType || !ALLOWED_ISSUE_TYPE_SET.has(selectedType)) {
       alert('Invalid image. Please attach a valid civic issue image before submitting.');
       setStep(2);
+      return;
+    }
+
+    if (!location?.lat || !location?.lng) {
+      alert('Current location is required. Please enable GPS/location permission and try again.');
+      setStep(3);
+      return;
+    }
+
+    if (isDuplicate) {
+      alert('This report already has been submitted.');
       return;
     }
 
@@ -317,10 +343,10 @@ export default function ReportIssue() {
           id: reportId,
           type,
           severity,
-          lat: location?.lat || 28.6139,
-          lng: location?.lng || 77.2090,
-          location: location?.address || "New Delhi",
-          ward: location?.ward || "Central Ward",
+          lat: location.lat,
+          lng: location.lng,
+          location: location?.address || `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
+          ward: location?.ward || 'Ward - Unknown',
           department: detection?.department || null,
           description: description,
           imageUrl: finalImageUrl,
@@ -351,8 +377,12 @@ export default function ReportIssue() {
       } catch (error) {
         console.error("Background submission error:", error);
         setIsSaving(false);
-        // We don't alert here because the user is already on the success screen
-        // In a real app, we might show a "Sync Failed" badge on the success card
+        const message = error instanceof Error ? error.message : 'Failed to submit report.';
+        if (/already has been submitted/i.test(message)) {
+          setStep(4);
+          setComplaintId(null);
+          alert('This report already has been submitted.');
+        }
       }
     })();
   };
@@ -529,8 +559,25 @@ export default function ReportIssue() {
             <div className="relative h-80 rounded-[2.5rem] overflow-hidden shadow-2xl mb-6 border-4 border-white dark:border-slate-800">
               {!location ? (
                 <div className="absolute inset-0 bg-slate-100 dark:bg-slate-900 flex flex-col items-center justify-center">
-                  <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
-                  <p className="font-bold text-slate-500">Detecting your location...</p>
+                  {isDetectingLocation ? (
+                    <>
+                      <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
+                      <p className="font-bold text-slate-500">Detecting your current location...</p>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="text-amber-500 mb-3" size={34} />
+                      <p className="font-bold text-slate-600 text-center px-6">
+                        {locationError || 'Location not available yet.'}
+                      </p>
+                      <button
+                        onClick={detectLocation}
+                        className="mt-4 px-5 py-2 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition-colors"
+                      >
+                        Use Current Location
+                      </button>
+                    </>
+                  )}
                 </div>
               ) : (
                 <MapContainer 
@@ -573,8 +620,12 @@ export default function ReportIssue() {
                 <input 
                   type="text"
                   value={location?.address || ""}
-                  onChange={(e) => setLocation({ ...location, address: e.target.value })}
+                  onChange={(e) => {
+                    if (!location) return;
+                    setLocation({ ...location, address: e.target.value });
+                  }}
                   placeholder="Enter address manually..."
+                  disabled={!location}
                   className="w-full bg-slate-50 border-none rounded-2xl p-4 pl-12 text-sm font-bold dark:bg-slate-800 dark:text-white"
                 />
                 <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -590,6 +641,7 @@ export default function ReportIssue() {
               </button>
               <button
                 onClick={() => setStep(4)}
+                disabled={!location || isDetectingLocation}
                 className="flex-[2] py-4 rounded-2xl bg-blue-600 text-white font-bold shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all"
               >
                 {t('next_step')}
@@ -660,17 +712,19 @@ export default function ReportIssue() {
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800">
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Additional Details</div>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Add more details about the issue..."
-                  className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-bold dark:bg-slate-800 dark:text-white min-h-[120px]"
-                />
-              </div>
+              {!isDuplicate && (
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Additional Details</div>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Add more details about the issue..."
+                    className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-bold dark:bg-slate-800 dark:text-white min-h-[120px]"
+                  />
+                </div>
+              )}
 
-              {uploadedImageUrl && (
+              {!isDuplicate && uploadedImageUrl && (
                 <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center gap-4 dark:bg-emerald-900/10 dark:border-emerald-900/20">
                   <CheckCircle2 className="text-emerald-600" size={20} />
                   <div>
@@ -683,37 +737,48 @@ export default function ReportIssue() {
               )}
 
               {isDuplicate && (
-                <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-start gap-4 dark:bg-rose-900/10 dark:border-rose-900/20">
-                  <AlertCircle className="text-rose-600 shrink-0" size={20} />
-                  <div>
-                    <h4 className="font-bold text-rose-900 dark:text-rose-400 text-sm">Duplicate Issue Detected</h4>
-                    <p className="text-xs text-rose-700 dark:text-rose-500 mt-1">
-                      This issue has already been reported at this location. We've increased the priority to **CRITICAL** to expedite resolution.
-                    </p>
+                <div className="space-y-4">
+                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-start gap-4 dark:bg-rose-900/10 dark:border-rose-900/20">
+                    <AlertCircle className="text-rose-600 shrink-0" size={20} />
+                    <div>
+                      <h4 className="font-bold text-rose-900 dark:text-rose-400 text-sm">Duplicate Issue Detected</h4>
+                      <p className="text-xs text-rose-700 dark:text-rose-500 mt-1">
+                        This report already has been submitted at this location. Please do not submit again.
+                      </p>
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/citizen-dashboard')}
+                    className="w-full py-4 rounded-2xl bg-slate-800 text-white font-bold hover:bg-slate-900 transition-all dark:bg-slate-700 dark:hover:bg-slate-600"
+                  >
+                    Back to Citizen Dashboard
+                  </button>
                 </div>
               )}
             </div>
 
-            <div className="mt-10">
-              <button
-                onClick={handleSubmit}
-                disabled={isSaving}
-                className="w-full py-5 rounded-[2rem] bg-blue-600 text-white font-black text-lg shadow-2xl shadow-blue-500/30 hover:bg-blue-700 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="animate-spin" size={24} />
-                    Submitting Report...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={24} />
-                    {t('submit_report')}
-                  </>
-                )}
-              </button>
-            </div>
+            {!isDuplicate && (
+              <div className="mt-10">
+                <button
+                  onClick={handleSubmit}
+                  disabled={isSaving || isDuplicate}
+                  className="w-full py-5 rounded-[2rem] bg-blue-600 text-white font-black text-lg shadow-2xl shadow-blue-500/30 hover:bg-blue-700 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="animate-spin" size={24} />
+                      Submitting Report...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={24} />
+                      {t('submit_report')}
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </motion.div>
         )}
 

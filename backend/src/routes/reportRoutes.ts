@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { createHash } from 'node:crypto';
 import { pool } from '../config/db';
 import { requireAuth } from '../middleware/auth';
 import { UserRole } from '../types/auth';
@@ -153,6 +154,18 @@ function isValidResolutionNotes(value: string | null | undefined) {
   return value.trim().length >= 20;
 }
 
+function getDataUrlImageHash(imageUrl?: string | null) {
+  if (!imageUrl) return null;
+  const trimmed = imageUrl.trim();
+  if (!trimmed.startsWith('data:image/')) return null;
+  const commaIndex = trimmed.indexOf(',');
+  if (commaIndex < 0) return null;
+  const base64Payload = trimmed.slice(commaIndex + 1).replace(/\s+/g, '');
+  if (!base64Payload) return null;
+
+  return createHash('sha256').update(base64Payload).digest('hex');
+}
+
 async function getCurrentUser(userId: string) {
   const result = await pool.query<DbUser>(
     `SELECT id, first_name, last_name, email, phone, role, department
@@ -190,6 +203,41 @@ router.post('/', async (req, res) => {
       message:
         'Invalid image category. Please upload a valid civic issue image (pothole, garbage overflow, broken streetlight, water leakage, illegal dumping, fallen tree, hanging wire, park broken equipment, public bench broken).',
     });
+  }
+
+  if (report.imageUrl) {
+    const incomingImageHash = getDataUrlImageHash(report.imageUrl);
+    const duplicateResult = await pool.query<{ id: string; complaint_code: string }>(
+      `SELECT
+         id,
+         (
+           'CMP-'
+           || TO_CHAR(COALESCE(reported_at, NOW()), 'YYYY')
+           || '-'
+           || LPAD(COALESCE(complaint_number, 0)::text, 6, '0')
+         ) AS complaint_code
+       FROM reports
+       WHERE citizen_id = $1
+         AND ABS(lat - $3) <= 0.0007
+         AND ABS(lng - $4) <= 0.0007
+         AND (
+           image_url = $2
+           OR (
+             $5::text IS NOT NULL
+             AND image_url LIKE 'data:image/%;base64,%'
+             AND encode(digest(split_part(image_url, ',', 2), 'sha256'), 'hex') = $5
+           )
+         )
+       LIMIT 1`,
+      [currentUser.id, report.imageUrl, report.lat, report.lng, incomingImageHash]
+    );
+
+    if (duplicateResult.rowCount) {
+      return res.status(409).json({
+        message: 'This report already has been submitted.',
+        complaintCode: duplicateResult.rows[0].complaint_code,
+      });
+    }
   }
 
   const assignedDepartment = assignDepartment(report.type, report.department);

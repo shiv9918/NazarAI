@@ -39,6 +39,12 @@ export default function Navbar() {
     : user?.role === 'department'
       ? '/dept-dashboard'
       : '/dashboard';
+  const hideNameInProfile = user?.role === 'department';
+  const hideAvatarInProfile = user?.role === 'department';
+  const departmentInitial = (user?.department || '')
+    .replace(/[^a-z]/gi, '')
+    .charAt(0)
+    .toUpperCase() || 'D';
 
   const brandRedirectPath = isAuthenticated ? dashboardPath : '/';
 
@@ -71,14 +77,19 @@ export default function Navbar() {
                   onClick={() => setIsProfileOpen(!isProfileOpen)}
                   className="flex items-center gap-2 rounded-full border border-slate-200 p-1 pr-3 transition-all hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
                 >
-                  <img
-                    src={user?.avatar}
-                    alt={user?.name}
-                    className="h-8 w-8 rounded-full object-cover shadow-sm"
-                  />
+                  {hideAvatarInProfile ? (
+                    <div className="h-8 w-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-bold shadow-sm">
+                      {departmentInitial}
+                    </div>
+                  ) : (
+                    <img
+                      src={user?.avatar}
+                      alt={user?.name}
+                      className="h-8 w-8 rounded-full object-cover shadow-sm"
+                    />
+                  )}
                   <ChevronDown size={14} className={`text-slate-400 transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} />
                 </button>
-
                 <AnimatePresence>
                   {isProfileOpen && (
                     <motion.div
@@ -89,7 +100,9 @@ export default function Navbar() {
                     >
                       {/* User Info Header */}
                       <div className="bg-slate-50 p-4 dark:bg-slate-900/50">
-                        <p className="text-sm font-bold text-slate-900 dark:text-white">{user?.name}</p>
+                        {!hideNameInProfile && (
+                          <p className="text-sm font-bold text-slate-900 dark:text-white">{user?.name}</p>
+                        )}
                         <p className="text-xs text-slate-500 dark:text-slate-400">{user?.email}</p>
                         <div className="mt-2 flex items-center gap-2">
                           <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
@@ -185,13 +198,21 @@ export default function Navbar() {
                 {isAuthenticated ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-4 dark:bg-slate-900/50">
-                      <img
-                        src={user?.avatar}
-                        alt={user?.name}
-                        className="h-10 w-10 rounded-full object-cover"
-                      />
+                      {hideAvatarInProfile ? (
+                        <div className="h-10 w-10 rounded-full bg-blue-500 text-white flex items-center justify-center text-base font-bold shadow-sm">
+                          {departmentInitial}
+                        </div>
+                      ) : (
+                        <img
+                          src={user?.avatar}
+                          alt={user?.name}
+                          className="h-10 w-10 rounded-full object-cover"
+                        />
+                      )}
                       <div>
-                        <p className="text-sm font-bold text-slate-900 dark:text-white">{user?.name}</p>
+                        {!hideNameInProfile && (
+                          <p className="text-sm font-bold text-slate-900 dark:text-white">{user?.name}</p>
+                        )}
                         <p className="text-xs text-slate-500 dark:text-slate-400">{user?.email}</p>
                       </div>
                     </div>

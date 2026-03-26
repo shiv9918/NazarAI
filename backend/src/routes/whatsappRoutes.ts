@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { createHash } from 'node:crypto';
 import { pool } from '../config/db';
 import { env } from '../config/env';
 import { assignDepartment } from '../utils/reportAssignment';
@@ -44,6 +45,18 @@ async function respondWhatsAppMessage(res: any, _to: string, message: string) {
 
 function normalizePhone(raw: string) {
   return raw.replace(/[^\d+]/g, '').trim();
+}
+
+function getDataUrlImageHash(imageUrl?: string | null) {
+  if (!imageUrl) return null;
+  const trimmed = imageUrl.trim();
+  if (!trimmed.startsWith('data:image/')) return null;
+  const commaIndex = trimmed.indexOf(',');
+  if (commaIndex < 0) return null;
+  const base64Payload = trimmed.slice(commaIndex + 1).replace(/\s+/g, '');
+  if (!base64Payload) return null;
+
+  return createHash('sha256').update(base64Payload).digest('hex');
 }
 
 function stripWhatsappPrefix(value: string) {
@@ -220,10 +233,25 @@ const WHATSAPP_ISSUE_TYPE_ALIASES: Record<string, string> = {
   pothole: 'pothole',
   broken_streetlight: 'broken_streetlight',
   water_leakage: 'water_leakage',
+  tree: 'fallen_tree',
+  tree_gira: 'fallen_tree',
   fallen_tree: 'fallen_tree',
   hanging_wire: 'hanging_wire',
   park_broken_equipment: 'park_broken_equipment',
   public_bench_broken: 'public_bench_broken',
+};
+
+const WHATSAPP_ISSUE_TO_DEPARTMENT: Record<string, string> = {
+  pothole: 'pwd',
+  garbage_overflow: 'sanitation',
+  broken_streetlight: 'bses',
+  water_leakage: 'djb',
+  illegal_dumping: 'sanitation',
+  fallen_tree: 'forest_dept',
+  hanging_wire: 'bses',
+  // Kept under administration until dedicated department mapping is introduced.
+  park_broken_equipment: 'administration',
+  public_bench_broken: 'administration',
 };
 
 function normalizeWhatsappIssueType(rawType: string | null | undefined) {
@@ -238,6 +266,10 @@ function normalizeWhatsappIssueType(rawType: string | null | undefined) {
   }
 
   return canonical;
+}
+
+function getWhatsappDepartmentFromIssueType(issueType: string) {
+  return WHATSAPP_ISSUE_TO_DEPARTMENT[issueType] || assignDepartment(issueType, null);
 }
 
 async function getWhatsappSession(citizenId: string, fromPhone: string) {
@@ -358,7 +390,43 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
     return;
   }
 
-  const assignedDepartment = assignDepartment(normalizedIssueType, null);
+  const incomingImageHash = getDataUrlImageHash(image.dataUrl);
+  const duplicateResult = await pool.query<{ id: string; complaint_code: string }>(
+    `SELECT
+       id,
+       (
+         'CMP-'
+         || TO_CHAR(COALESCE(reported_at, NOW()), 'YYYY')
+         || '-'
+         || LPAD(COALESCE(complaint_number, 0)::text, 6, '0')
+       ) AS complaint_code
+     FROM reports
+     WHERE citizen_id = $1
+       AND ABS(lat - $3) <= 0.0007
+       AND ABS(lng - $4) <= 0.0007
+       AND (
+         image_url = $2
+         OR (
+           $5::text IS NOT NULL
+           AND image_url LIKE 'data:image/%;base64,%'
+           AND encode(digest(split_part(image_url, ',', 2), 'sha256'), 'hex') = $5
+         )
+       )
+     LIMIT 1`,
+    [payload.citizen.id, image.dataUrl, payload.lat, payload.lng, incomingImageHash]
+  );
+
+  if (duplicateResult.rowCount) {
+    const existingCode = duplicateResult.rows[0].complaint_code;
+    await clearWhatsappSession(payload.citizen.id, normalizePhone(stripWhatsappPrefix(payload.from)));
+    await sendTwilioWhatsAppMessage({
+      to: payload.from,
+      message: `This report already has been submitted. Complaint ID: ${existingCode}.`,
+    });
+    return;
+  }
+
+  const assignedDepartment = getWhatsappDepartmentFromIssueType(normalizedIssueType);
   const citizenName = `${payload.citizen.first_name} ${payload.citizen.last_name}`.trim();
 
   const inserted = await pool.query<{ id: string; complaint_code: string }>(
