@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { createHash } from 'node:crypto';
 import { pool } from '../config/db';
 import { env } from '../config/env';
 import { assignDepartment } from '../utils/reportAssignment';
@@ -44,6 +45,18 @@ async function respondWhatsAppMessage(res: any, _to: string, message: string) {
 
 function normalizePhone(raw: string) {
   return raw.replace(/[^\d+]/g, '').trim();
+}
+
+function getDataUrlImageHash(imageUrl?: string | null) {
+  if (!imageUrl) return null;
+  const trimmed = imageUrl.trim();
+  if (!trimmed.startsWith('data:image/')) return null;
+  const commaIndex = trimmed.indexOf(',');
+  if (commaIndex < 0) return null;
+  const base64Payload = trimmed.slice(commaIndex + 1).replace(/\s+/g, '');
+  if (!base64Payload) return null;
+
+  return createHash('sha256').update(base64Payload).digest('hex');
 }
 
 function stripWhatsappPrefix(value: string) {
@@ -377,6 +390,7 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
     return;
   }
 
+  const incomingImageHash = getDataUrlImageHash(image.dataUrl);
   const duplicateResult = await pool.query<{ id: string; complaint_code: string }>(
     `SELECT
        id,
@@ -388,11 +402,18 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
        ) AS complaint_code
      FROM reports
      WHERE citizen_id = $1
-       AND image_url = $2
-       AND ROUND(lat::numeric, 5) = ROUND($3::numeric, 5)
-       AND ROUND(lng::numeric, 5) = ROUND($4::numeric, 5)
+       AND ABS(lat - $3) <= 0.0007
+       AND ABS(lng - $4) <= 0.0007
+       AND (
+         image_url = $2
+         OR (
+           $5::text IS NOT NULL
+           AND image_url LIKE 'data:image/%;base64,%'
+           AND encode(digest(split_part(image_url, ',', 2), 'sha256'), 'hex') = $5
+         )
+       )
      LIMIT 1`,
-    [payload.citizen.id, image.dataUrl, payload.lat, payload.lng]
+    [payload.citizen.id, image.dataUrl, payload.lat, payload.lng, incomingImageHash]
   );
 
   if (duplicateResult.rowCount) {
