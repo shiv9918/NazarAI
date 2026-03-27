@@ -28,6 +28,23 @@ type DbWhatsappSession = {
   flow_state: 'waiting_for_image' | 'waiting_for_location' | 'ready_to_process' | null;
 };
 
+type DbWhatsappStatusReport = {
+  id: string;
+  complaint_code: string;
+  type: string;
+  status: 'reported' | 'in_progress' | 'resolved';
+  severity: number;
+  department: string;
+  location: string;
+  description: string | null;
+  reported_at: Date;
+  resolved_at: Date | null;
+  resolution_notes: string | null;
+  resolved_by_officer: string | null;
+  is_reopened: boolean;
+  reopen_votes: number;
+};
+
 function xmlMessage(text: string) {
   const safe = text
     .replace(/&/g, '&amp;')
@@ -132,6 +149,173 @@ function extractAddressText(bodyText: string, fallbackAddress?: string | null) {
   }
 
   return null;
+}
+
+function extractStatusLookupId(bodyText: string) {
+  const trimmed = bodyText.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const match = trimmed.match(/^(?:status|track|स्थिति|स्टेटस)\s+(.+)$/i);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  return match[1].trim().toUpperCase();
+}
+
+function detectStatusCommandLanguage(bodyText: string): 'en' | 'hi' {
+  const trimmed = bodyText.trim();
+  if (/^(?:स्थिति|स्टेटस)\s+/i.test(trimmed)) {
+    return 'hi';
+  }
+
+  return 'en';
+}
+
+function getStatusLabel(status: 'reported' | 'in_progress' | 'resolved') {
+  if (status === 'in_progress') {
+    return 'IN PROGRESS';
+  }
+
+  return status.toUpperCase();
+}
+
+function toDisplayDate(value: Date | null) {
+  if (!value) {
+    return 'N/A';
+  }
+
+  return new Date(value).toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+function buildWhatsappStatusMessage(report: DbWhatsappStatusReport) {
+  const lines = [
+    `Complaint ID: ${report.complaint_code}`,
+    `Status: ${getStatusLabel(report.status)}`,
+    `Issue Type: ${report.type}`,
+    `Severity: ${report.severity}/10`,
+    `Department: ${report.department}`,
+    `Location: ${report.location}`,
+    `Reported On: ${toDisplayDate(report.reported_at)}`,
+    `Resolved On: ${toDisplayDate(report.resolved_at)}`,
+    `Reopened: ${report.is_reopened ? 'Yes' : 'No'} (Votes: ${report.reopen_votes})`,
+  ];
+
+  if (report.resolved_by_officer) {
+    lines.push(`Resolved By: ${report.resolved_by_officer}`);
+  }
+
+  if (report.resolution_notes) {
+    lines.push(`Resolution Notes: ${report.resolution_notes}`);
+  }
+
+  if (report.description) {
+    lines.push(`Your Description: ${report.description}`);
+  }
+
+  return lines.join('\n');
+}
+
+function buildWhatsappStatusMessageHindi(report: DbWhatsappStatusReport) {
+  const statusHindi = report.status === 'reported'
+    ? 'दर्ज'
+    : report.status === 'in_progress'
+      ? 'कार्य प्रगति पर'
+      : 'समाधान हो गया';
+
+  const lines = [
+    `शिकायत आईडी: ${report.complaint_code}`,
+    `स्थिति: ${statusHindi}`,
+    `समस्या प्रकार: ${report.type}`,
+    `गंभीरता: ${report.severity}/10`,
+    `विभाग: ${report.department}`,
+    `स्थान: ${report.location}`,
+    `दर्ज समय: ${toDisplayDate(report.reported_at)}`,
+    `समाधान समय: ${toDisplayDate(report.resolved_at)}`,
+    `दोबारा खोला गया: ${report.is_reopened ? 'हाँ' : 'नहीं'} (वोट: ${report.reopen_votes})`,
+  ];
+
+  if (report.resolved_by_officer) {
+    lines.push(`समाधान अधिकारी: ${report.resolved_by_officer}`);
+  }
+
+  if (report.resolution_notes) {
+    lines.push(`समाधान विवरण: ${report.resolution_notes}`);
+  }
+
+  if (report.description) {
+    lines.push(`आपका विवरण: ${report.description}`);
+  }
+
+  return lines.join('\n');
+}
+
+async function resolveReportForWhatsappStatus(citizenId: string, requestedId: string) {
+  const complaintCodePattern = /^[A-Za-z]{3}-\d{4}-\d{4,6}$/;
+  const uuidPattern = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+  let whereClause = '';
+  let params: Array<string | number> = [citizenId];
+
+  if (complaintCodePattern.test(requestedId)) {
+    whereClause = `
+      citizen_id = $1
+      AND (
+        'CMP-'
+        || TO_CHAR(COALESCE(reported_at, NOW()), 'YYYY')
+        || '-'
+        || LPAD(COALESCE(complaint_number, 0)::text, 6, '0')
+      ) = $2
+    `;
+    params.push(requestedId);
+  } else if (uuidPattern.test(requestedId)) {
+    whereClause = 'citizen_id = $1 AND id = $2';
+    params.push(requestedId);
+  } else if (/^\d+$/.test(requestedId)) {
+    whereClause = 'citizen_id = $1 AND complaint_number = $2';
+    params.push(Number(requestedId));
+  } else {
+    return null;
+  }
+
+  const result = await pool.query<DbWhatsappStatusReport>(
+    `SELECT
+      id,
+      (
+        'CMP-'
+        || TO_CHAR(COALESCE(reported_at, NOW()), 'YYYY')
+        || '-'
+        || LPAD(COALESCE(complaint_number, 0)::text, 6, '0')
+      ) AS complaint_code,
+      type,
+      status,
+      severity,
+      department,
+      location,
+      description,
+      reported_at,
+      resolved_at,
+      resolution_notes,
+      resolved_by_officer,
+      is_reopened,
+      reopen_votes
+     FROM reports
+     WHERE ${whereClause}
+     ORDER BY reported_at DESC
+     LIMIT 1`,
+    params
+  );
+
+  return result.rows[0] || null;
 }
 
 function getTwilioAuthHeader() {
@@ -597,6 +781,28 @@ router.post('/webhook', async (req, res) => {
   await syncCitizenPhoneWithIncoming(citizen.id, from, citizen.phone);
 
   const fromPhone = normalizePhone(stripWhatsappPrefix(from));
+
+  const statusLookupId = extractStatusLookupId(bodyText);
+  if (statusLookupId) {
+    const language = detectStatusCommandLanguage(bodyText);
+    const report = await resolveReportForWhatsappStatus(citizen.id, statusLookupId);
+
+    if (!report) {
+      return respondWhatsAppMessage(
+        res,
+        from,
+        language === 'hi'
+          ? ` '${statusLookupId}' के लिए कोई शिकायत नहीं मिली। सही फॉर्मेट भेजें: स्थिति CMP-2026-000123`
+          : `No complaint found for '${statusLookupId}'. Send exact format like: STATUS CMP-2026-000123`
+      );
+    }
+
+    return respondWhatsAppMessage(
+      res,
+      from,
+      language === 'hi' ? buildWhatsappStatusMessageHindi(report) : buildWhatsappStatusMessage(report)
+    );
+  }
 
   // Check if this is a resolution feedback (rating reply)
   const feedbackResult = await handleIncomingResolutionFeedback({

@@ -1,10 +1,39 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, ArrowUpRight, X, Calendar, Info, Maximize2, Upload, Search } from 'lucide-react';
+import { MapPin, ArrowUpRight, X, Calendar, Info, Maximize2, Upload, Search, AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 const AUTH_TOKEN_KEY = 'nazarai_auth_token';
+const SLA_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+function formatTimer(ms?: number) {
+  if (ms == null || ms <= 0) return '00:00:00';
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 99) return `${hours}h ${minutes}m`;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function formatUnresolvedDuration(sourceDate?: string) {
+  if (!sourceDate) return 'Time unavailable';
+  const reportedAt = new Date(sourceDate).getTime();
+  if (!Number.isFinite(reportedAt)) return 'Time unavailable';
+
+  const diffMs = Math.max(0, Date.now() - reportedAt);
+  const totalMinutes = Math.floor(diffMs / (60 * 1000));
+  if (totalMinutes < 60) return `${totalMinutes} mins unresolved`;
+
+  const totalHours = Math.floor(totalMinutes / 60);
+  if (totalHours < 24) return `${totalHours} hrs unresolved`;
+
+  const days = Math.floor(totalHours / 24);
+  const remHours = totalHours % 24;
+  return `${days}d ${remHours}h unresolved`;
+}
 
 export default function DepartmentDashboardHome() {
   const { t } = useTranslation();
@@ -22,6 +51,7 @@ export default function DepartmentDashboardHome() {
   const [activeSection, setActiveSection] = useState<'all' | 'today'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'reported' | 'in_progress' | 'resolved'>('all');
+  const [timerTick, setTimerTick] = useState(0);
 
   const fetchIssues = async () => {
     const token = localStorage.getItem(AUTH_TOKEN_KEY);
@@ -170,6 +200,11 @@ export default function DepartmentDashboardHome() {
     return () => clearInterval(intervalId);
   }, [user]);
 
+  useEffect(() => {
+    const interval = setInterval(() => setTimerTick((tick) => tick + 1), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   const isRecomplaintIssue = (issue: any) =>
     issue.isReopened ||
     Number(issue.reopenVotes || 0) > 0 ||
@@ -188,11 +223,51 @@ export default function DepartmentDashboardHome() {
     );
   };
 
-  const resolvedComplaints = issues.filter((issue) => issue.status === 'resolved').length;
-  const recomplainedComplaints = issues.filter((issue) => isRecomplaintIssue(issue)).length;
-  const todaysComplaints = issues.filter((issue) => isTodayIssue(issue)).length;
+  const normalizedIssues = useMemo(() => {
+    const now = Date.now();
 
-  const filteredIssues = issues.filter((issue) => {
+    return issues.map((issue) => {
+      const sourceDate = issue.reportedAt || issue.createdAt;
+      const reportedAtMs = sourceDate ? new Date(sourceDate).getTime() : null;
+      const hasValidTimestamp = typeof reportedAtMs === 'number' && Number.isFinite(reportedAtMs);
+
+      if (!hasValidTimestamp || issue.status === 'resolved') {
+        return { ...issue, timeLeftMs: 0, isOverdue: false };
+      }
+
+      const deadlineMs = reportedAtMs + SLA_WINDOW_MS;
+      const timeLeftMs = deadlineMs - now;
+
+      return {
+        ...issue,
+        timeLeftMs,
+        isOverdue: timeLeftMs <= 0,
+      };
+    });
+  }, [issues, timerTick]);
+
+  const resolvedComplaints = normalizedIssues.filter((issue) => issue.status === 'resolved').length;
+  const recomplainedComplaints = normalizedIssues.filter((issue) => isRecomplaintIssue(issue)).length;
+  const todaysComplaints = normalizedIssues.filter((issue) => isTodayIssue(issue)).length;
+
+  const criticalFlagIssues = useMemo(() => {
+    return normalizedIssues
+      .filter((issue) => issue.status !== 'resolved' && issue.isOverdue)
+      .sort((a, b) => {
+        const overdueWeightA = a.isOverdue ? 1 : 0;
+        const overdueWeightB = b.isOverdue ? 1 : 0;
+        if (overdueWeightA !== overdueWeightB) return overdueWeightB - overdueWeightA;
+
+        if ((b.severity || 0) !== (a.severity || 0)) return (b.severity || 0) - (a.severity || 0);
+
+        const aTimeLeft = typeof a.timeLeftMs === 'number' ? a.timeLeftMs : Number.MAX_SAFE_INTEGER;
+        const bTimeLeft = typeof b.timeLeftMs === 'number' ? b.timeLeftMs : Number.MAX_SAFE_INTEGER;
+        return aTimeLeft - bTimeLeft;
+      })
+      .slice(0, 6);
+  }, [normalizedIssues]);
+
+  const filteredIssues = normalizedIssues.filter((issue) => {
     const matchesSection = activeSection === 'all' ? true : isTodayIssue(issue);
     const matchesStatus = statusFilter === 'all' ? true : issue.status === statusFilter;
 
@@ -252,6 +327,75 @@ export default function DepartmentDashboardHome() {
           </div>
         </div>
 
+        {criticalFlagIssues.length > 0 && (
+          <div className="rounded-3xl border border-rose-200 bg-rose-50/40 p-5 shadow-sm dark:border-rose-900/60 dark:bg-rose-900/10">
+            <div className="mb-4">
+              <h4 className="text-2xl font-black text-rose-700 dark:text-rose-300">Critical Flags</h4>
+              <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                Unresolved issues that breached 48-hour SLA for {user?.department || 'department'}
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {criticalFlagIssues.map((issue) => {
+                const sourceDate = issue.reportedAt || issue.createdAt;
+                return (
+                  <button
+                    key={issue.id}
+                    onClick={() => setSelectedIssue(issue)}
+                    className="group w-full rounded-3xl border border-rose-200/70 bg-white/85 p-4 text-left transition hover:border-rose-300 hover:bg-white dark:border-rose-900/40 dark:bg-slate-900/60 dark:hover:border-rose-800"
+                  >
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="space-y-3">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle size={20} className="mt-0.5 text-rose-500" />
+                          <h5 className="text-2xl font-black leading-tight text-rose-700 dark:text-rose-300">
+                            {(issue.department || '').toUpperCase()} - {issue.location || 'Unknown location'}
+                          </h5>
+                        </div>
+
+                        <p className="text-lg font-semibold capitalize text-rose-600 dark:text-rose-300">
+                          {String(issue.type || '').replace('_', ' ')} | {formatUnresolvedDuration(sourceDate)}
+                        </p>
+
+                        <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                          Reported by: {issue.citizenName || 'Citizen'} | ID #{String(issue.id).slice(-4)}
+                        </p>
+
+                        <div className="flex flex-wrap gap-2 text-xs font-black uppercase tracking-wider">
+                          {issue.isOverdue && (
+                            <span className="rounded-full bg-rose-100 px-3 py-1 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+                              SLA Breached
+                            </span>
+                          )}
+                          <span className="rounded-full bg-slate-200 px-3 py-1 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                            ID #{String(issue.id).slice(-4)}
+                          </span>
+                          <span className="rounded-full bg-blue-100 px-3 py-1 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                            Severity: {issue.severity || 0}
+                          </span>
+                          <span className="rounded-full bg-slate-200 px-3 py-1 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                            Status: {issue.status}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="h-28 w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 lg:w-72 dark:border-slate-700 dark:bg-slate-800">
+                        <img
+                          src={issue.imageUrl || `https://picsum.photos/seed/${issue.type}-${issue.id}/600/320`}
+                          alt={issue.type || 'Issue image'}
+                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="mb-4 flex flex-wrap gap-2">
             {[
@@ -299,6 +443,7 @@ export default function DepartmentDashboardHome() {
               <thead>
                 <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-widest text-slate-500 dark:border-slate-800 dark:text-slate-400">
                   <th className="px-3 py-3">Complaint ID</th>
+                  <th className="px-3 py-3">Timer</th>
                   <th className="px-3 py-3">Issue</th>
                   <th className="px-3 py-3">Location</th>
                   <th className="px-3 py-3">Severity</th>
@@ -310,17 +455,18 @@ export default function DepartmentDashboardHome() {
               <tbody>
                 {filteredIssues.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
+                    <td colSpan={8} className="px-3 py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
                       No complaints found for the selected filters.
                     </td>
                   </tr>
                 ) : (
                   filteredIssues.map((issue) => {
                     const isRecomplaint = isRecomplaintIssue(issue);
+                    const isCriticalFlag = Boolean(issue.isOverdue) || Number(issue.severity || 0) >= 8;
                     return (
                       <tr
                         key={issue.id}
-                        className="border-b border-slate-100 transition hover:bg-slate-50 dark:border-slate-800/70 dark:hover:bg-slate-800/50"
+                        className={`border-b border-slate-100 transition hover:bg-slate-50 dark:border-slate-800/70 dark:hover:bg-slate-800/50 ${issue.isOverdue ? 'bg-rose-50/70 dark:bg-rose-900/10' : ''}`}
                       >
                         <td className="px-3 py-4">
                           <div className="font-black text-slate-900 dark:text-white">{issue.complaintCode || issue.complaintNumber || issue.id}</div>
@@ -328,6 +474,15 @@ export default function DepartmentDashboardHome() {
                             <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
                               Re-Complained
                             </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-4">
+                          {issue.status === 'resolved' ? (
+                            <span className="font-semibold text-emerald-600 dark:text-emerald-400">Resolved</span>
+                          ) : issue.isOverdue ? (
+                            <span className="font-semibold text-rose-600 dark:text-rose-400">Overdue</span>
+                          ) : (
+                            <span className="font-mono font-semibold text-blue-700 dark:text-blue-300">{formatTimer(issue.timeLeftMs)}</span>
                           )}
                         </td>
                         <td className="px-3 py-4 font-semibold capitalize text-slate-700 dark:text-slate-200">{String(issue.type || '').replace('_', ' ')}</td>
@@ -339,13 +494,13 @@ export default function DepartmentDashboardHome() {
                         </td>
                         <td className="px-3 py-4">
                           <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${
-                            issue.severity >= 8
+                            isCriticalFlag
                               ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
                               : issue.severity >= 5
                                 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
                                 : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
                           }`}>
-                            {issue.severity >= 8 ? 'Critical' : issue.severity >= 5 ? 'High' : 'Normal'}
+                            {isCriticalFlag ? 'Critical' : issue.severity >= 5 ? 'High' : 'Normal'}
                           </span>
                         </td>
                         <td className="px-3 py-4">
