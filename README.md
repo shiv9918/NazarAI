@@ -58,6 +58,7 @@ flowchart TB
 
     subgraph AI_Layer["🤖 AI Engine"]
         Gemini["🧠 Google Gemini\nImage & Text Analysis"]
+        OpenCV["📷 OpenCV Model\nImage Detection"]
         Router["🔄 Smart Router\nDept + Urgency Detection"]
     end
 
@@ -76,8 +77,9 @@ flowchart TB
     Web --> API
     WA --> API
     API --> DB
-    API --> Gemini
-    Gemini --> Router
+    API --> OpenCV
+    OpenCV --> Gemini
+        Gemini --> Router
     Router --> API
     API --> Weather
     API --> Municipal
