@@ -18,7 +18,7 @@
 
 <!-- Live Demo Badge -->
 <p align="center">
-  <a href="https://nazar-ai-nu.vercel.app"><img src="https://img.shields.io/badge/🚀_Live_Demo-Visit-2563eb?style=for-the-badge" alt="Live Demo" /></a>
+  <a href="https://www.nazarai.live/"><img src="https://img.shields.io/badge/🚀_Live_Demo-Visit-2563eb?style=for-the-badge" alt="Live Demo" /></a>
   <a href="https://github.com/shiv9918/NazarAI/blob/main/LICENSE"><img src="https://img.shields.io/github/license/shiv9918/NazarAI?style=for-the-badge&color=orange" alt="License" /></a>
   <a href="https://github.com/shiv9918/NazarAI/stargazers"><img src="https://img.shields.io/github/stars/shiv9918/NazarAI?style=for-the-badge&color=gold" alt="Stars" /></a>
 </p>
@@ -283,8 +283,8 @@ This project is currently **unlicensed**. Add a `LICENSE` file before public/com
 
 <div align="center">
 
-### ⭐ Made with ❤️ by the NazarAI Team
+### ⭐ Made with ❤️ by the Team - Techies
 
-[Report Bug](https://github.com/shiv9918/NazarAI/issues) · [Request Feature](https://github.com/shiv9918/NazarAI/issues) · [Live Demo](https://nazar-ai-nu.vercel.app)
+[Report Bug](https://github.com/shiv9918/NazarAI/issues) · [Request Feature](https://github.com/shiv9918/NazarAI/issues) · [Live Demo](https://www.nazarai.live/)
 
 </div>
