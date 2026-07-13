@@ -19,6 +19,7 @@ const CitizenDashboard = lazy(() => import('./pages/CitizenDashboard'));
 const CitizenDashboardLayout = lazy(() => import('./pages/CitizenDashboardLayout'));
 const LeaderBoard = lazy(() => import('./pages/LeaderBoard'));
 const Settings = lazy(() => import('./pages/Settings'));
+const CityMap = lazy(() => import('./pages/CityMap'));
 const Insights = lazy(() => import('./pages/dashboard/Insights'));
 const DepartmentDashboardHome = lazy(() => import('./pages/dashboard/DepartmentDashboardHome'));
 const DepartmentIssueManagement = lazy(() => import('./pages/dashboard/DepartmentIssueManagement'));
@@ -57,6 +58,7 @@ export default function App() {
                         </Route>
 
                         <Route path="/about" element={<About />} />
+                        <Route path="/map" element={<CityMap />} />
                         <Route
                           path="/settings"
                           element={(

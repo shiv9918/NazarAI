@@ -2,6 +2,7 @@ type VisionDetection = {
   issueType: string;
   severity: number;
   aiDescription: string;
+  confidence?: number;
   diagnosticCode?:
     | 'ok'
     | 'missing_api_key'
@@ -9,11 +10,22 @@ type VisionDetection = {
     | 'gemini_access_denied'
     | 'gemini_request_failed'
     | 'no_model_text'
-    | 'model_output_parse_failed';
+    | 'model_output_parse_failed'
+    | 'low_confidence';
   geminiStatus?: number;
 };
 
-type IssueType = 'garbage' | 'pothole' | 'broken_streetlight' | 'water_leakage' | 'illegal_dump' | 'unknown';
+type IssueType =
+  | 'garbage'
+  | 'pothole'
+  | 'broken_streetlight'
+  | 'water_leakage'
+  | 'illegal_dump'
+  | 'fallen_tree'
+  | 'hanging_wire'
+  | 'park_broken_equipment'
+  | 'public_bench_broken'
+  | 'unknown';
 
 const DEFAULT_DETECTION: VisionDetection = {
   issueType: 'unknown',
@@ -66,6 +78,17 @@ const ISSUE_ALIASES: Record<string, string> = {
   construction_dump: 'illegal_dump',
   debris_dump: 'illegal_dump',
   dump: 'illegal_dump',
+  fallen_tree: 'fallen_tree',
+  tree_fallen: 'fallen_tree',
+  tree_down: 'fallen_tree',
+  tree_fall: 'fallen_tree',
+  hanging_wire: 'hanging_wire',
+  loose_wire: 'hanging_wire',
+  wire_down: 'hanging_wire',
+  park_broken_equipment: 'park_broken_equipment',
+  broken_park_equipment: 'park_broken_equipment',
+  public_bench_broken: 'public_bench_broken',
+  broken_bench: 'public_bench_broken',
   unknown: 'unknown',
 };
 
@@ -75,6 +98,10 @@ const KEYWORD_HINTS: Record<Exclude<IssueType, 'unknown'>, string[]> = {
   broken_streetlight: ['streetlight', 'street light', 'light not working', 'light outage', 'dark road', 'bijli'],
   garbage: ['garbage', 'trash', 'waste', 'litter', 'kachra', 'dustbin overflow'],
   illegal_dump: ['illegal dump', 'debris', 'construction waste', 'dumping', 'malba'],
+  fallen_tree: ['fallen tree', 'tree fallen', 'tree down', 'uprooted tree', 'tree branches', 'tree trunk'],
+  hanging_wire: ['hanging wire', 'loose wire', 'wire down', 'electric wire', 'fallen wire'],
+  park_broken_equipment: ['park equipment', 'broken swing', 'broken slide', 'damaged play equipment'],
+  public_bench_broken: ['broken bench', 'damaged bench', 'park bench', 'bench broken'],
 };
 
 function inferIssueTypeFromKeywords(text?: string | null): IssueType {
@@ -85,6 +112,10 @@ function inferIssueTypeFromKeywords(text?: string | null): IssueType {
     'water_leakage',
     'pothole',
     'broken_streetlight',
+    'fallen_tree',
+    'hanging_wire',
+    'park_broken_equipment',
+    'public_bench_broken',
     'garbage',
     'illegal_dump',
   ];
@@ -115,6 +146,15 @@ function normalizeIssueType(raw: string | undefined) {
 function normalizeSeverity(raw: number | undefined) {
   if (!raw || Number.isNaN(raw)) return DEFAULT_DETECTION.severity;
   return Math.max(1, Math.min(10, Math.round(raw)));
+}
+
+function normalizeConfidence(raw: number | undefined) {
+  if (typeof raw !== 'number' || Number.isNaN(raw)) {
+    return undefined;
+  }
+
+  const normalized = raw > 1 ? raw / 100 : raw;
+  return Math.max(0, Math.min(1, normalized));
 }
 
 function hasWaterLeakageHints(text?: string) {
@@ -176,6 +216,10 @@ function pickNumberField(obj: Record<string, unknown>, keys: string[]): number |
   return undefined;
 }
 
+function pickConfidenceField(obj: Record<string, unknown>, keys: string[]): number | undefined {
+  return normalizeConfidence(pickNumberField(obj, keys));
+}
+
 async function classifyIssueTypeStrict(params: {
   endpoint: string;
   imageBase64: string;
@@ -185,7 +229,7 @@ async function classifyIssueTypeStrict(params: {
   const strictPrompt = [
     'Classify this civic issue image.',
     'Respond with exactly one label only from this list:',
-    'garbage, pothole, broken_streetlight, water_leakage, illegal_dump, unknown',
+    'garbage, pothole, broken_streetlight, water_leakage, illegal_dump, fallen_tree, hanging_wire, park_broken_equipment, public_bench_broken, unknown',
     'If the image is not a civic issue or is unclear, return unknown.',
     'Do not return JSON. Do not add explanation.',
     params.reportText ? `Citizen note: ${params.reportText}` : '',
@@ -270,15 +314,18 @@ export async function detectIssueFromImage(params: {
 
   const prompt = [
     'You are classifying civic issues from a single citizen photo for municipal routing in Indian cities.',
-    'Return only JSON with keys: issueType, severity, aiDescription.',
-    'issueType must be one of: garbage, pothole, broken_streetlight, water_leakage, illegal_dump, unknown.',
+    'Return only JSON with keys: issueType, severity, confidence, aiDescription.',
+    'issueType must be one of: garbage, pothole, broken_streetlight, water_leakage, illegal_dump, fallen_tree, hanging_wire, park_broken_equipment, public_bench_broken, unknown.',
     'Choose the closest matching issueType from allowed list. Use unknown only when image has no visible civic issue.',
     'Do not overuse unknown. If any visible issue exists, pick the closest label.',
+    'If a tree is fallen, uprooted, broken, or blocking an area, choose fallen_tree instead of garbage or illegal_dump.',
+    'If a wire is hanging down, choose hanging_wire.',
     'If visible flowing/spraying water from pipe/tap/drain is present, prefer water_leakage (not garbage).',
     'Even if scene is indoor or private-looking, visible active water leakage/spray still maps to water_leakage.',
     'Use garbage only when trash/litter is the dominant issue in the image.',
     'If road surface hole/crater is visible, prefer pothole.',
     'If street light pole/lamp is not working or broken, prefer broken_streetlight.',
+    'If the image is blurry, partially blocked, too dark, or ambiguous, reduce confidence and use unknown if you cannot identify the issue reliably.',
     '',
     'SEVERITY SCORING (1-10 scale):',
     '1-2: MINOR - No safety risk, cosmetic issue, small localized trash, very minor street damage',
@@ -294,6 +341,7 @@ export async function detectIssueFromImage(params: {
     '• Health/environmental risk: Water overflow, contamination = higher severity',
     '• Urgency: How soon must it be fixed = reflects in severity',
     '',
+    'confidence must be a decimal from 0 to 1 indicating how certain you are.',
     'severity must be integer 1-10.',
     'aiDescription should be max 200 chars.',
     params.reportText ? `Citizen note: ${params.reportText}` : '',
@@ -412,7 +460,9 @@ export async function detectIssueFromImage(params: {
   const rawIssueType = pickStringField(parsed, ['issueType', 'issue_type', 'type', 'issue', 'category', 'label']);
   let issueType = normalizeIssueType(rawIssueType);
   const severityValue = pickNumberField(parsed, ['severity', 'priority', 'level', 'score']);
+  const confidenceValue = pickConfidenceField(parsed, ['confidence', 'confidenceScore', 'certainty', 'probability']);
   const rawAiDescription = pickStringField(parsed, ['aiDescription', 'ai_description', 'description', 'reason', 'summary']);
+  const normalizedConfidence = confidenceValue ?? (issueType === 'unknown' ? 0.2 : rawIssueType ? 0.7 : 0.5);
 
   // Final hard fallback: if still unknown, ask model for a strict single-label answer.
   if (issueType === 'unknown') {
@@ -429,11 +479,30 @@ export async function detectIssueFromImage(params: {
     logGemini('Strict retry completed', { strictRetry, finalIssueType: issueType });
   }
 
+  const finalConfidence = issueType === 'unknown'
+    ? Math.min(normalizedConfidence, 0.35)
+    : normalizedConfidence;
+  const shouldRequestClearImage = issueType === 'unknown' || finalConfidence < 0.75;
+
   logGemini('Detection finished', {
     issueType,
     severity: normalizeSeverity(severityValue),
     aiDescription: typeof rawAiDescription === 'string' ? rawAiDescription.slice(0, 120) : null,
+    confidence: finalConfidence,
+    shouldRequestClearImage,
   });
+
+  if (shouldRequestClearImage) {
+    return {
+      issueType: 'unknown',
+      severity: DEFAULT_DETECTION.severity,
+      aiDescription: typeof rawAiDescription === 'string' && rawAiDescription.trim().length
+        ? rawAiDescription.trim().slice(0, 200)
+        : DEFAULT_DETECTION.aiDescription,
+      confidence: finalConfidence,
+      diagnosticCode: 'low_confidence',
+    };
+  }
 
   return {
     issueType,
@@ -442,6 +511,7 @@ export async function detectIssueFromImage(params: {
       typeof rawAiDescription === 'string' && rawAiDescription.trim().length
         ? rawAiDescription.trim().slice(0, 200)
         : DEFAULT_DETECTION.aiDescription,
+    confidence: finalConfidence,
     diagnosticCode: 'ok',
   };
 }

@@ -358,13 +358,36 @@ async function fetchTwilioMediaAsDataUrl(mediaUrl: string): Promise<{ dataUrl: s
     return null;
   }
 
-  const response = await fetch(mediaUrl, {
-    headers: {
-      Authorization: authHeader,
-    },
-  });
+  const trimmedUrl = mediaUrl.trim();
+  const attemptUrls = [trimmedUrl];
+  if (trimmedUrl.endsWith('.json')) {
+    attemptUrls.push(trimmedUrl.replace(/\.json$/i, ''));
+  }
 
-  if (!response.ok) {
+  let response: Response | null = null;
+  let resolvedFromUrl = trimmedUrl;
+
+  for (const candidateUrl of attemptUrls) {
+    const candidateResponse = await fetch(candidateUrl, {
+      headers: {
+        Authorization: authHeader,
+      },
+    });
+
+    if (candidateResponse.ok) {
+      response = candidateResponse;
+      resolvedFromUrl = candidateUrl;
+      break;
+    }
+
+    console.warn('[WhatsApp] Twilio media download attempt failed', {
+      status: candidateResponse.status,
+      statusText: candidateResponse.statusText,
+      urlPreview: candidateUrl.slice(0, 160),
+    });
+  }
+
+  if (!response) {
     return null;
   }
 
@@ -376,6 +399,7 @@ async function fetchTwilioMediaAsDataUrl(mediaUrl: string): Promise<{ dataUrl: s
   const base64 = Buffer.from(arrayBuffer).toString('base64');
 
   console.log('[WhatsApp] Twilio media downloaded', {
+    fromUrlPreview: resolvedFromUrl.slice(0, 160),
     contentTypeHeader,
     safeMimeType,
     bytes: arrayBuffer.byteLength,
@@ -384,6 +408,29 @@ async function fetchTwilioMediaAsDataUrl(mediaUrl: string): Promise<{ dataUrl: s
   return {
     dataUrl: `data:${safeMimeType};base64,${base64}`,
     mimeType: safeMimeType,
+  };
+}
+
+function parseImageDataUrl(input: string): { dataUrl: string; mimeType: string } | null {
+  const trimmed = input.trim();
+  if (!trimmed.startsWith('data:image/')) {
+    return null;
+  }
+
+  const commaIndex = trimmed.indexOf(',');
+  if (commaIndex < 0) {
+    return null;
+  }
+
+  const metadata = trimmed.slice(5, commaIndex); // image/png;base64
+  const mimeType = metadata.split(';')[0]?.toLowerCase();
+  if (!mimeType || !mimeType.startsWith('image/')) {
+    return null;
+  }
+
+  return {
+    dataUrl: trimmed,
+    mimeType,
   };
 }
 
@@ -551,7 +598,8 @@ function buildMissingRequirementMessage(hasMedia: boolean, hasAddress: boolean, 
 }
 
 async function processIncomingWhatsappReport(payload: ProcessingPayload) {
-  const image = await fetchTwilioMediaAsDataUrl(payload.mediaUrl);
+  const inlineImage = parseImageDataUrl(payload.mediaUrl);
+  const image = inlineImage || await fetchTwilioMediaAsDataUrl(payload.mediaUrl);
 
   if (!image) {
     await clearWhatsappSession(payload.citizen.id, normalizePhone(stripWhatsappPrefix(payload.from)));
@@ -574,11 +622,21 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
     issueType: detection.issueType,
     severity: detection.severity,
     aiDescription: detection.aiDescription?.slice(0, 160),
+    confidence: detection.confidence,
     diagnosticCode: detection.diagnosticCode,
     geminiStatus: detection.geminiStatus,
     mimeType: image.mimeType,
     hasGeminiKey: Boolean(env.geminiApiKey),
   });
+
+  if (detection.diagnosticCode === 'low_confidence' || (typeof detection.confidence === 'number' && detection.confidence < 0.75)) {
+    await clearWhatsappSession(payload.citizen.id, normalizePhone(stripWhatsappPrefix(payload.from)));
+    await sendTwilioWhatsAppMessage({
+      to: payload.from,
+      message: 'I could not confidently identify the issue from this image. Please upload a clearer photo of the issue and send it again.',
+    });
+    return;
+  }
 
   let normalizedIssueType = normalizeWhatsappIssueType(detection.issueType);
   if (!normalizedIssueType) {
@@ -586,14 +644,14 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
   }
 
   if (!normalizedIssueType) {
-    let classificationMessage = 'We could not classify the issue from this photo. Please resend a clearer photo and mention issue type (e.g., pothole, water leakage, garbage, broken streetlight).';
+    let classificationMessage = 'I could not confidently identify the issue from this image. Please upload a clearer photo of the issue and send it again.';
 
     if (detection.diagnosticCode === 'missing_api_key') {
-      classificationMessage = 'AI classification is temporarily unavailable (server key missing). Please mention issue type in text with the image (e.g., water leakage, pothole), and we will register it.';
+      classificationMessage = 'AI classification is temporarily unavailable (server key missing). Please upload a clearer photo of the issue and send it again.';
     } else if (detection.diagnosticCode === 'gemini_quota_exceeded') {
-      classificationMessage = 'AI image limit is currently reached. Please resend with issue text (e.g., "water leakage") so we can still register your complaint.';
+      classificationMessage = 'AI image limit is currently reached. Please upload a clearer photo of the issue and send it again.';
     } else if (detection.diagnosticCode === 'gemini_access_denied') {
-      classificationMessage = 'AI service authentication failed temporarily. Please resend with issue text (e.g., pothole, garbage) and we will process manually.';
+      classificationMessage = 'AI service authentication failed temporarily. Please upload a clearer photo of the issue and send it again.';
     }
 
     await clearWhatsappSession(payload.citizen.id, normalizePhone(stripWhatsappPrefix(payload.from)));
@@ -845,6 +903,16 @@ router.post('/webhook', async (req, res) => {
       // Image received, store it and ask for location
       console.log(`[WhatsApp] Image received for ${from}, now asking for location`);
 
+      const downloadedMedia = await fetchTwilioMediaAsDataUrl(currentMediaUrl);
+      const pendingMediaPayload = downloadedMedia?.dataUrl || currentMediaUrl;
+
+      if (!downloadedMedia) {
+        console.warn('[WhatsApp] Could not pre-download media. Will retry when location arrives.', {
+          from,
+          mediaUrlPreview: currentMediaUrl.slice(0, 160),
+        });
+      }
+
       await upsertWhatsappSession({
         citizenId: citizen.id,
         fromPhone,
@@ -852,7 +920,7 @@ router.post('/webhook', async (req, res) => {
         pendingAddress: null,
         pendingLat: null,
         pendingLng: null,
-        pendingMediaUrl: currentMediaUrl,
+        pendingMediaUrl: pendingMediaPayload,
         flowState: 'waiting_for_location',
       });
 
