@@ -1,3 +1,8 @@
+// This file sends a citizen's photo to Google Gemini AI to figure out what
+// civic issue it shows (pothole, garbage, water leak, etc.), how severe it
+// is, and how confident the AI is — with keyword-based fallbacks if the AI fails.
+
+// What we return after analyzing an image.
 type VisionDetection = {
   issueType: string;
   severity: number;
@@ -15,6 +20,7 @@ type VisionDetection = {
   geminiStatus?: number;
 };
 
+// The fixed list of civic issue categories we recognize.
 type IssueType =
   | 'garbage'
   | 'pothole'
@@ -27,12 +33,14 @@ type IssueType =
   | 'public_bench_broken'
   | 'unknown';
 
+// Fallback result used when we can't confidently detect anything.
 const DEFAULT_DETECTION: VisionDetection = {
   issueType: 'unknown',
   severity: 3,
   aiDescription: 'Issue detected from WhatsApp report image.',
 };
 
+// Small helper for consistent, labeled console logging from this file.
 function logGemini(message: string, meta?: Record<string, unknown>) {
   if (meta) {
     console.log(`[GeminiVision] ${message}`, meta);
@@ -41,6 +49,8 @@ function logGemini(message: string, meta?: Record<string, unknown>) {
   console.log(`[GeminiVision] ${message}`);
 }
 
+// Maps many possible spellings/synonyms the AI or citizens might use
+// down to our fixed set of issue types.
 const ISSUE_ALIASES: Record<string, string> = {
   garbage: 'garbage',
   garbage_overflow: 'garbage',
@@ -92,6 +102,8 @@ const ISSUE_ALIASES: Record<string, string> = {
   unknown: 'unknown',
 };
 
+// Keywords used to guess the issue type from plain text (citizen note or AI text),
+// used as a fallback when we can't get a clean answer from the AI.
 const KEYWORD_HINTS: Record<Exclude<IssueType, 'unknown'>, string[]> = {
   water_leakage: ['water', 'leak', 'leakage', 'pipeline', 'pipe', 'drain', 'sewage', 'pani', 'paani', 'nal'],
   pothole: ['pothole', 'potholes', 'gaddha', 'road crack', 'road damage', 'sadak'],
@@ -104,6 +116,7 @@ const KEYWORD_HINTS: Record<Exclude<IssueType, 'unknown'>, string[]> = {
   public_bench_broken: ['broken bench', 'damaged bench', 'park bench', 'bench broken'],
 };
 
+// Look for known keywords in a piece of text and guess the issue type from them.
 function inferIssueTypeFromKeywords(text?: string | null): IssueType {
   if (!text) return 'unknown';
   const t = text.toLowerCase();
@@ -129,6 +142,7 @@ function inferIssueTypeFromKeywords(text?: string | null): IssueType {
   return 'unknown';
 }
 
+// Clean up any raw issue-type text (from the AI or elsewhere) into one of our standard types.
 function normalizeIssueType(raw: string | undefined) {
   if (!raw) return DEFAULT_DETECTION.issueType;
   const normalized = raw.toLowerCase().trim().replace(/\s+/g, '_');
@@ -143,11 +157,13 @@ function normalizeIssueType(raw: string | undefined) {
   return inferred !== 'unknown' ? inferred : DEFAULT_DETECTION.issueType;
 }
 
+// Force the severity number into the valid 1-10 range.
 function normalizeSeverity(raw: number | undefined) {
   if (!raw || Number.isNaN(raw)) return DEFAULT_DETECTION.severity;
   return Math.max(1, Math.min(10, Math.round(raw)));
 }
 
+// Force the confidence value into a 0-1 range (also handles values given as 0-100).
 function normalizeConfidence(raw: number | undefined) {
   if (typeof raw !== 'number' || Number.isNaN(raw)) {
     return undefined;
@@ -157,6 +173,7 @@ function normalizeConfidence(raw: number | undefined) {
   return Math.max(0, Math.min(1, normalized));
 }
 
+// Quick check for water-leak related words in a piece of text. (Currently unused elsewhere in this file.)
 function hasWaterLeakageHints(text?: string) {
   if (!text) return false;
   const t = text.toLowerCase();
@@ -171,6 +188,8 @@ function hasWaterLeakageHints(text?: string) {
   );
 }
 
+// Try to pull a JSON object out of the AI's text reply, even if it's wrapped
+// in markdown code fences or has extra text around it.
 function parseJsonFromText(rawText: string): Record<string, unknown> | null {
   const fenced = rawText.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const jsonCandidate = fenced ? fenced[1] : rawText;
@@ -192,6 +211,7 @@ function parseJsonFromText(rawText: string): Record<string, unknown> | null {
   }
 }
 
+// Read the first non-empty string value found under any of the given field names.
 function pickStringField(obj: Record<string, unknown>, keys: string[]): string | undefined {
   for (const key of keys) {
     const value = obj[key];
@@ -202,6 +222,8 @@ function pickStringField(obj: Record<string, unknown>, keys: string[]): string |
   return undefined;
 }
 
+// Read the first usable number value found under any of the given field names
+// (also accepts numbers written as strings).
 function pickNumberField(obj: Record<string, unknown>, keys: string[]): number | undefined {
   for (const key of keys) {
     const value = obj[key];
@@ -216,10 +238,13 @@ function pickNumberField(obj: Record<string, unknown>, keys: string[]): number |
   return undefined;
 }
 
+// Same as pickNumberField, but also clamps the result into a valid 0-1 confidence range.
 function pickConfidenceField(obj: Record<string, unknown>, keys: string[]): number | undefined {
   return normalizeConfidence(pickNumberField(obj, keys));
 }
 
+// Backup call to Gemini that asks for just one word (the issue type), used when
+// the main detailed request fails or gives an unclear answer.
 async function classifyIssueTypeStrict(params: {
   endpoint: string;
   imageBase64: string;
@@ -280,6 +305,8 @@ async function classifyIssueTypeStrict(params: {
   return inferred;
 }
 
+// Main function: send the photo to Gemini AI and work out what civic issue it shows.
+// Falls back to keyword guessing or a simpler retry if the AI call fails or is unclear.
 export async function detectIssueFromImage(params: {
   imageBase64: string;
   mimeType: string;
@@ -297,6 +324,7 @@ export async function detectIssueFromImage(params: {
     imageBytesApprox: Math.round((params.imageBase64?.length || 0) * 0.75),
   });
 
+  // No API key configured: just guess from the citizen's text, if any.
   if (!params.geminiApiKey) {
     const textFallback = inferIssueTypeFromKeywords(params.reportText || '');
     logGemini('No GEMINI_API_KEY. Using text fallback when possible.', {
@@ -312,6 +340,7 @@ export async function detectIssueFromImage(params: {
 
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(params.geminiApiKey)}`;
 
+  // Detailed instructions telling the AI exactly what to look for and how to score severity.
   const prompt = [
     'You are classifying civic issues from a single citizen photo for municipal routing in Indian cities.',
     'Return only JSON with keys: issueType, severity, confidence, aiDescription.',
@@ -374,6 +403,8 @@ export async function detectIssueFromImage(params: {
     }),
   });
 
+  // The main AI request failed (rate limit, bad key, etc): try the simpler
+  // single-label retry instead of giving up completely.
   if (!response.ok) {
     const errorBody = await response.text().catch(() => '');
     const diagnosticCode = response.status === 429
@@ -409,6 +440,7 @@ export async function detectIssueFromImage(params: {
     textPreview: typeof modelText === 'string' ? modelText.slice(0, 220) : null,
   });
 
+  // AI gave no usable text back: try the strict retry, then fall back to keywords.
   if (!modelText || typeof modelText !== 'string') {
     logGemini('Model returned no text. Running strict retry.');
     const strictRetry = await classifyIssueTypeStrict({
@@ -430,6 +462,7 @@ export async function detectIssueFromImage(params: {
     };
   }
 
+  // Try to read the AI's answer as JSON. If that fails, fall back step by step.
   const parsed = parseJsonFromText(modelText);
   if (!parsed) {
     logGemini('JSON parse failed. Falling back to keyword inference.', {
@@ -457,6 +490,7 @@ export async function detectIssueFromImage(params: {
     };
   }
 
+  // Pull out the fields we care about from the parsed JSON, being flexible about field names.
   const rawIssueType = pickStringField(parsed, ['issueType', 'issue_type', 'type', 'issue', 'category', 'label']);
   let issueType = normalizeIssueType(rawIssueType);
   const severityValue = pickNumberField(parsed, ['severity', 'priority', 'level', 'score']);
@@ -479,6 +513,7 @@ export async function detectIssueFromImage(params: {
     logGemini('Strict retry completed', { strictRetry, finalIssueType: issueType });
   }
 
+  // If we're still unsure, cap the confidence low and ask the citizen for a clearer photo.
   const finalConfidence = issueType === 'unknown'
     ? Math.min(normalizedConfidence, 0.35)
     : normalizedConfidence;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ChangeEvent } from 'react';
 import { Search, Filter, Download, MoreVertical, Eye, CheckCircle, Clock, AlertTriangle, MapPin, Users, X, Calendar, Info, Maximize2, Upload, Save } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
@@ -123,7 +123,7 @@ export default function IssueManagement() {
     }
   };
 
-  const onProofImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onProofImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();

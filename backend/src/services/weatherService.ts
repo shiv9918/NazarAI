@@ -1,6 +1,9 @@
+// This file fetches rain forecasts (from OpenWeatherMap, with an Open-Meteo
+// fallback) and turns the rainfall amount into an alert severity level.
 import { env } from '../config/env';
 import { reverseGeocodeCoordinates } from './geocodingService';
 
+// How serious the rain risk is.
 export type RainfallSeverity = 'none' | 'watch' | 'warning' | 'emergency';
 
 export type WeatherSummary = {
@@ -38,6 +41,7 @@ type OpenWeatherForecastResponse = {
 const OPEN_WEATHER_ENDPOINT = 'https://api.openweathermap.org/data/2.5/forecast';
 const OPEN_METEO_ENDPOINT = 'https://api.open-meteo.com/v1/forecast';
 
+// Turn the configured lat/lng into a readable place name.
 async function getLocationNameFromApi(): Promise<string> {
   const geocoded = await reverseGeocodeCoordinates(env.openWeatherLat, env.openWeatherLon);
   if (!geocoded) {
@@ -47,6 +51,7 @@ async function getLocationNameFromApi(): Promise<string> {
   return geocoded.city !== 'Unknown' ? geocoded.city : geocoded.address;
 }
 
+// Decide the alert level and message based on how much rain (mm) is expected in 48h.
 export function classifyRainfall(rainfall48hMm: number): {
   severity: RainfallSeverity;
   label: string;
@@ -83,6 +88,7 @@ export function classifyRainfall(rainfall48hMm: number): {
   };
 }
 
+// Get the 48-hour rain forecast from OpenWeatherMap (the primary/preferred provider).
 export async function getOpenWeather48hSummary(): Promise<WeatherSummary> {
   if (!env.openWeatherApiKey) {
     throw new Error('OPENWEATHER_API_KEY is not configured.');
@@ -105,8 +111,10 @@ export async function getOpenWeather48hSummary(): Promise<WeatherSummary> {
   }
 
   const payload = (await response.json()) as OpenWeatherForecastResponse;
+  // Each forecast slot covers 3 hours, so 16 slots = 48 hours.
   const slots = Array.isArray(payload.list) ? payload.list.slice(0, 16) : [];
 
+  // Add up the rain from every slot to get the 48-hour total.
   const rainfall48hMm = slots.reduce((sum, item) => {
     const rainfall = item.rain?.['3h'] ?? 0;
     return sum + (Number.isFinite(rainfall) ? rainfall : 0);
@@ -133,6 +141,7 @@ type OpenMeteoForecastResponse = {
   };
 };
 
+// Backup rain forecast using Open-Meteo, used only if OpenWeatherMap fails.
 async function getOpenMeteo48hFallback(): Promise<WeatherSummary> {
   const url = new URL(OPEN_METEO_ENDPOINT);
   url.searchParams.set('latitude', String(env.openWeatherLat));
@@ -168,6 +177,8 @@ async function getOpenMeteo48hFallback(): Promise<WeatherSummary> {
   };
 }
 
+// Get the current weather summary, trying OpenWeatherMap first and
+// automatically switching to the Open-Meteo backup if it fails.
 export async function getWeather48hSummary(): Promise<WeatherProviderResult> {
   try {
     const weather = await getOpenWeather48hSummary();

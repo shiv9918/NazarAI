@@ -5,7 +5,7 @@ import { MapPin, CheckCircle2, Loader2, AlertCircle, TrendingUp, Upload, Camera,
 import { useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import imageCompression from 'browser-image-compression';
-import { getCurrentPosition } from '../utils/location';
+import { getCurrentPosition, DEFAULT_FALLBACK_LOCATION } from '../utils/location';
 import { analyzeIssueImage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
 
@@ -275,7 +275,7 @@ export default function ReportIssue() {
       const pos = await getCurrentPosition();
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
-      
+
       // Use Nominatim for live address
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
@@ -283,19 +283,31 @@ export default function ReportIssue() {
       );
       const data = await response.json();
       const address = data.display_name || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-      
+
       // Extract neighborhood/suburb for "Ward" display
       const neighborhood = data.address?.suburb || data.address?.neighbourhood || data.address?.city_district || "Central Ward";
       const ward = `Ward - ${neighborhood}`;
-      
-      setLocation({ lat, lng, address, ward });
-      
+
+      setLocation({ lat, lng, address, ward, isFallback: false });
+
       // Simulate Duplicate Detection (Real API would be better)
       setIsDuplicate(Math.random() > 0.85);
     } catch (error) {
-      console.error("Error detecting location:", error);
-      setLocation(null);
-      setLocationError("Unable to fetch current location. Please allow location permission and try again.");
+      // Live location truly unavailable (permission denied, no GPS, or the
+      // reverse-geocoding call failed) - fall back to the default campus
+      // location so the flow isn't blocked. Never used when live location
+      // succeeds.
+      console.error("Error detecting live location, using default fallback:", error);
+      const message = error instanceof Error ? error.message : "Unable to fetch current location.";
+      setLocation({
+        lat: DEFAULT_FALLBACK_LOCATION.lat,
+        lng: DEFAULT_FALLBACK_LOCATION.lng,
+        address: DEFAULT_FALLBACK_LOCATION.address,
+        ward: "Ward - Gorakhpur",
+        isFallback: true,
+      });
+      setIsDuplicate(false);
+      setLocationError(`${message} Showing default location (MMMUT, Gorakhpur) — tap "Use Live Location" to retry.`);
     } finally {
       setIsDetectingLocation(false);
     }
@@ -575,7 +587,7 @@ export default function ReportIssue() {
               <button
                 onClick={handleDetectionNextStep}
                 disabled={isAnalyzing || (Boolean(invalidDetectionMessage) && !manualIssueType)}
-                className="flex-[2] py-4 rounded-2xl bg-blue-600 text-white font-bold shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all disabled:opacity-50"
+                className="flex-2 py-4 rounded-2xl bg-blue-600 text-white font-bold shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all disabled:opacity-50"
               >
                 {t('next_step')}
               </button>
@@ -621,20 +633,38 @@ export default function ReportIssue() {
                   )}
                 </div>
               ) : (
-                <MapContainer 
-                  center={[location.lat, location.lng]} 
-                  zoom={15} 
-                  className="h-full w-full"
-                  scrollWheelZoom={false}
-                >
-                  {theme === 'dark' ? (
-                    <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
-                  ) : (
-                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                <>
+                  <MapContainer
+                    center={[location.lat, location.lng]}
+                    zoom={15}
+                    className="h-full w-full"
+                    scrollWheelZoom={false}
+                  >
+                    {theme === 'dark' ? (
+                      <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
+                    ) : (
+                      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    )}
+                    <Marker position={[location.lat, location.lng]} icon={DefaultIcon} />
+                    <MapUpdater center={[location.lat, location.lng]} />
+                  </MapContainer>
+
+                  {location.isFallback && (
+                    <div className="absolute inset-x-0 top-0 z-[1000] flex items-center justify-between gap-3 bg-amber-500/95 px-4 py-2 text-left text-white shadow-md">
+                      <div className="flex items-center gap-2 text-xs font-bold">
+                        <AlertCircle size={16} />
+                        <span>Using default location (MMMUT, Gorakhpur). Live location unavailable.</span>
+                      </div>
+                      <button
+                        onClick={detectLocation}
+                        disabled={isDetectingLocation}
+                        className="shrink-0 rounded-lg bg-white/20 px-3 py-1 text-xs font-bold hover:bg-white/30 transition-colors disabled:opacity-50"
+                      >
+                        Use Live Location
+                      </button>
+                    </div>
                   )}
-                  <Marker position={[location.lat, location.lng]} icon={DefaultIcon} />
-                  <MapUpdater center={[location.lat, location.lng]} />
-                </MapContainer>
+                </>
               )}
             </div>
 
@@ -683,7 +713,7 @@ export default function ReportIssue() {
               <button
                 onClick={() => setStep(4)}
                 disabled={!location || isDetectingLocation}
-                className="flex-[2] py-4 rounded-2xl bg-blue-600 text-white font-bold shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all"
+                className="flex-2 py-4 rounded-2xl bg-blue-600 text-white font-bold shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all"
               >
                 {t('next_step')}
               </button>
@@ -760,7 +790,7 @@ export default function ReportIssue() {
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Add more details about the issue..."
-                    className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-bold dark:bg-slate-800 dark:text-white min-h-[120px]"
+                    className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-bold dark:bg-slate-800 dark:text-white min-h-30"
                   />
                 </div>
               )}
@@ -804,7 +834,7 @@ export default function ReportIssue() {
                 <button
                   onClick={handleSubmit}
                   disabled={isSaving || isDuplicate}
-                  className="w-full py-5 rounded-[2rem] bg-blue-600 text-white font-black text-lg shadow-2xl shadow-blue-500/30 hover:bg-blue-700 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                  className="w-full py-5 rounded-4xl bg-blue-600 text-white font-black text-lg shadow-2xl shadow-blue-500/30 hover:bg-blue-700 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
                 >
                   {isSaving ? (
                     <>

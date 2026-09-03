@@ -1,3 +1,5 @@
+// This is the main entry point: it builds the Express app, sets up security
+// (CORS, rate limiting), wires up all the routes, and starts the server.
 import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
@@ -10,12 +12,15 @@ import whatsappRoutes from './routes/whatsappRoutes';
 import weatherRoutes from './routes/weatherRoutes';
 import { sendPendingFeedbackReminders } from './services/whatsappResolutionFlow';
 
+// Handle to the background timer that sends feedback reminders, so we can stop it later.
 let feedbackReminderInterval: NodeJS.Timeout | null = null;
 
+// Make an origin URL consistent for comparison (lowercase, no trailing slash).
 function normalizeOrigin(origin: string) {
   return origin.trim().toLowerCase().replace(/\/$/, '');
 }
 
+// Check if a website is allowed to call this backend (CORS check).
 function isAllowedOrigin(origin: string) {
   const normalizedOrigin = normalizeOrigin(origin);
   const allowedFromEnv = env.corsOrigins.map(normalizeOrigin);
@@ -32,7 +37,9 @@ function isAllowedOrigin(origin: string) {
   return false;
 }
 
+// Sets everything up and starts listening for requests.
 async function startServer() {
+  // Make sure the database is reachable and up to date before accepting requests.
   await testConnection();
   await runMigrations();
 
@@ -91,6 +98,7 @@ async function startServer() {
     legacyHeaders: false,
   });
 
+  // Simple endpoint to check the server is alive and which features are configured.
   app.get('/api/health', (_req, res) => {
     res.json({
       ok: true,
@@ -105,6 +113,7 @@ async function startServer() {
     });
   });
 
+  // Hook up all the route files under their URL prefixes.
   app.use('/api/auth/login', authLoginLimiter);
   app.use('/api/auth', authRoutes);
   app.use('/api/reports', reportsLimiter, reportRoutes);
@@ -120,17 +129,20 @@ async function startServer() {
 
   void sendPendingFeedbackReminders();
 
+  // Start listening for incoming requests.
   app.listen(env.port, '0.0.0.0', () => {
     console.log(`Backend running at http://localhost:${env.port}`);
   });
 }
 
+// Boot the server; if setup fails, log it and exit.
 startServer().catch(async (error) => {
   console.error('Failed to start backend:', error);
   await pool.end();
   process.exit(1);
 });
 
+// Clean shutdown when the process is stopped (e.g. Ctrl+C).
 process.on('SIGINT', async () => {
   if (feedbackReminderInterval) {
     clearInterval(feedbackReminderInterval);

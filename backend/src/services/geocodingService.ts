@@ -31,6 +31,7 @@ interface BigDataCloudResponse {
   postcode?: string;
 }
 
+// Try to get an address from OpenStreetMap's Nominatim service (main/first choice).
 async function reverseWithNominatim(lat: number, lng: number): Promise<GeocodeResult | null> {
   const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
 
@@ -62,6 +63,7 @@ async function reverseWithNominatim(lat: number, lng: number): Promise<GeocodeRe
   };
 }
 
+// Backup service used only if Nominatim fails or gives no result.
 async function reverseWithBigDataCloud(lat: number, lng: number): Promise<GeocodeResult | null> {
   const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`;
 
@@ -107,11 +109,13 @@ export async function reverseGeocodeCoordinates(
   lng: number
 ): Promise<GeocodeResult | null> {
   try {
+    // First try the main service...
     const primary = await reverseWithNominatim(lat, lng);
     if (primary) {
       return primary;
     }
 
+    // ...and fall back to the backup service if that didn't work.
     const fallback = await reverseWithBigDataCloud(lat, lng);
     if (fallback) {
       return fallback;

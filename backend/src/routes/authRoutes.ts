@@ -1,3 +1,5 @@
+// This file has all the routes for signing up, logging in, viewing/updating
+// a profile, and resetting a forgotten password with an OTP.
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { randomInt } from 'node:crypto';
@@ -8,9 +10,11 @@ import { LoginPortalRole, PublicUser, UserRecord, UserRole, USER_ROLES } from '.
 import { signToken } from '../utils/token';
 import { sendTwilioSmsMessage } from '../services/twilioWhatsapp';
 
+// How long a password-reset OTP stays valid, and how many wrong tries are allowed.
 const OTP_TTL_MINUTES = 10;
 const OTP_MAX_ATTEMPTS = 5;
 
+// Rules for validating the signup form data.
 const signupSchema = z.object({
   firstName: z.string().trim().min(1),
   lastName: z.string().trim().min(1),
@@ -21,6 +25,7 @@ const signupSchema = z.object({
   department: z.string().trim().optional().nullable(),
 });
 
+// Rules for validating the login form data.
 const loginSchema = z.object({
   email: z.string().trim().email(),
   password: z.string().min(1),
@@ -28,6 +33,7 @@ const loginSchema = z.object({
   department: z.string().trim().optional().nullable(),
 });
 
+// Rules for validating profile-update data (all fields optional since it's a partial update).
 const updateProfileSchema = z.object({
   fullName: z.string().trim().min(1).max(120).optional(),
   email: z.string().trim().email().optional(),
@@ -44,26 +50,32 @@ const updateProfileSchema = z.object({
   newPassword: z.string().min(6).optional(),
 });
 
+// Rules for validating the "forgot password" request (just needs an email).
 const forgotPasswordSchema = z.object({
   email: z.string().trim().email(),
 });
 
+// Rules for validating the "reset password with OTP" request.
 const resetPasswordWithOtpSchema = z.object({
   email: z.string().trim().email(),
   otp: z.string().trim().length(6),
   newPassword: z.string().min(6),
 });
 
+// Make a random 6-digit one-time password.
 function generateOtp() {
   return randomInt(100000, 1000000).toString();
 }
 
+// Hide most of a phone number, only show the last 4 digits (for safe display in messages).
 function maskPhoneNumber(phone: string) {
   const digits = phone.replace(/\D/g, '');
   if (digits.length < 4) return '****';
   return `******${digits.slice(-4)}`;
 }
 
+// Turn a raw database user row into the safe shape we send back to the client
+// (no password hash, friendlier field names).
 function toPublicUser(record: UserRecord): PublicUser {
   const normalizedDepartment = normalizeDepartment(record.department);
 
@@ -86,6 +98,7 @@ function toPublicUser(record: UserRecord): PublicUser {
   };
 }
 
+// Clean up a department name and fix a few known shorthand/typo values.
 function normalizeDepartment(value?: string | null) {
   if (!value) return null;
   const normalized = value.toLowerCase().trim();
@@ -95,6 +108,8 @@ function normalizeDepartment(value?: string | null) {
   return normalized;
 }
 
+// Check that the login portal picked on the frontend (citizen/municipal/department)
+// actually matches this user's real role.
 function matchesPortalRole(portalRole: LoginPortalRole | undefined, userRole: UserRole) {
   if (!portalRole) return true;
   if (portalRole === 'municipal') {
@@ -105,6 +120,7 @@ function matchesPortalRole(portalRole: LoginPortalRole | undefined, userRole: Us
 
 const router = Router();
 
+// Create a new account.
 router.post('/signup', async (req, res) => {
   const parsed = signupSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -116,6 +132,7 @@ router.post('/signup', async (req, res) => {
   const phone = parsed.data.phone.trim();
   const normalizedEmail = email.toLowerCase();
 
+  // Department is required only for department-role accounts.
   if (role === 'department' && !department) {
     return res.status(400).json({ message: 'Department is required for department role.' });
   }
@@ -124,15 +141,18 @@ router.post('/signup', async (req, res) => {
     return res.status(400).json({ message: 'Department is only allowed for department role.' });
   }
 
+  // Don't allow two accounts with the same email.
   const existing = await pool.query<{ id: string }>('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [normalizedEmail]);
   if (existing.rowCount) {
     return res.status(409).json({ message: 'Email is already registered.' });
   }
 
+  // Never store the raw password, only a hashed version. Also make a default avatar image.
   const passwordHash = await bcrypt.hash(password, 10);
   const points = role === 'citizen' ? 0 : 0;
   const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(`${firstName} ${lastName}`)}&background=random`;
 
+  // Save the new user in the database.
   const inserted = await pool.query<UserRecord>(
     `INSERT INTO users (first_name, last_name, email, password_hash, role, department, points, avatar, phone)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -140,12 +160,14 @@ router.post('/signup', async (req, res) => {
     [firstName, lastName, normalizedEmail, passwordHash, role, role === 'department' ? department : null, points, avatar, phone]
   );
 
+  // Give the new user a login token so they are signed in right after signup.
   const user = toPublicUser(inserted.rows[0]);
   const token = signToken({ sub: user.uid, email: user.email, role: user.role });
 
   return res.status(201).json({ token, user });
 });
 
+// Sign in with email and password.
 router.post('/login', async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -156,6 +178,7 @@ router.post('/login', async (req, res) => {
   const requestedDepartment = normalizeDepartment(parsed.data.department);
   const normalizedEmail = email.toLowerCase();
 
+  // Look up the user by email.
   const found = await pool.query<UserRecord & { password_hash: string }>(
     `SELECT id, first_name, last_name, email, role, department, points, avatar, phone, location, bio, notify_issue_updates, notify_new_rewards, notify_city_alerts, preferred_theme, preferred_language, created_at, updated_at, last_login_at, password_hash
      FROM users
@@ -169,12 +192,14 @@ router.post('/login', async (req, res) => {
   }
 
   const record = found.rows[0];
+  // Check the password matches the stored hash.
   const validPassword = await bcrypt.compare(password, record.password_hash);
 
   if (!validPassword) {
     return res.status(401).json({ message: 'Invalid email or password.' });
   }
 
+  // Make sure they logged in from the correct portal (citizen/municipal/department).
   if (!matchesPortalRole(portalRole, record.role)) {
     return res.status(403).json({ message: 'Selected portal does not match your role.' });
   }
@@ -183,6 +208,7 @@ router.post('/login', async (req, res) => {
     return res.status(403).json({ message: 'Selected department does not match your account.' });
   }
 
+  // Remember when the user last logged in.
   await pool.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [record.id]);
 
   const user = toPublicUser(record);
@@ -191,6 +217,7 @@ router.post('/login', async (req, res) => {
   return res.json({ token, user });
 });
 
+// Get the profile of the currently logged-in user.
 router.get('/me', requireAuth, async (req, res) => {
   const userId = req.auth?.uid;
 
@@ -213,6 +240,7 @@ router.get('/me', requireAuth, async (req, res) => {
   return res.json({ user: toPublicUser(found.rows[0]) });
 });
 
+// Update the profile of the currently logged-in user (name, email, phone, settings, password, etc).
 router.patch('/me', requireAuth, async (req, res) => {
   const userId = req.auth?.uid;
 
@@ -240,6 +268,7 @@ router.patch('/me', requireAuth, async (req, res) => {
   const currentUser = existing.rows[0];
   const payload = parsed.data;
 
+  // Start with the current name, split "fullName" into first/last if it was sent.
   let firstName = currentUser.first_name;
   let lastName = currentUser.last_name;
 
@@ -251,6 +280,7 @@ router.patch('/me', requireAuth, async (req, res) => {
 
   const normalizedEmail = payload.email ? payload.email.toLowerCase() : currentUser.email;
 
+  // If the email is changing, make sure no other account already uses it.
   if (normalizedEmail !== currentUser.email.toLowerCase()) {
     const duplicate = await pool.query<{ id: string }>(
       'SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND id <> $2 LIMIT 1',
@@ -262,6 +292,7 @@ router.patch('/me', requireAuth, async (req, res) => {
     }
   }
 
+  // Keep current values as defaults; only overwrite the ones actually sent.
   let phone = currentUser.phone;
   let location = currentUser.location;
   let bio = currentUser.bio;
@@ -272,6 +303,7 @@ router.patch('/me', requireAuth, async (req, res) => {
   let preferredLanguage = currentUser.preferred_language;
   let passwordHash = currentUser.password_hash;
 
+  // Only citizen accounts can update these extra profile fields and their password.
   if (currentUser.role === 'citizen') {
     if (payload.phone !== undefined) phone = payload.phone || null;
     if (payload.location !== undefined) location = payload.location || null;
@@ -282,6 +314,7 @@ router.patch('/me', requireAuth, async (req, res) => {
     if (payload.preferredTheme !== undefined) preferredTheme = payload.preferredTheme;
     if (payload.preferredLanguage !== undefined) preferredLanguage = payload.preferredLanguage;
 
+    // To change the password, the current password must be given and correct.
     if (payload.newPassword !== undefined) {
       if (!payload.currentPassword) {
         return res.status(400).json({ message: 'Current password is required to set a new password.' });
@@ -296,11 +329,13 @@ router.patch('/me', requireAuth, async (req, res) => {
     }
   }
 
+  // Only department/admin accounts can change their department.
   let department = currentUser.department;
   if ((currentUser.role === 'department' || currentUser.role === 'admin') && payload.department !== undefined) {
     department = normalizeDepartment(payload.department) || null;
   }
 
+  // Save all the updated fields back to the database.
   const updated = await pool.query<UserRecord>(
     `UPDATE users
      SET first_name = $1,
@@ -339,6 +374,7 @@ router.patch('/me', requireAuth, async (req, res) => {
   return res.json({ user: toPublicUser(updated.rows[0]) });
 });
 
+// Start the "forgot password" process: find the user, make an OTP, and text it to them.
 router.post('/forgot-password', async (req, res) => {
   const parsed = forgotPasswordSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -367,9 +403,11 @@ router.post('/forgot-password', async (req, res) => {
     return res.status(400).json({ message: 'No mobile number is registered with this account.' });
   }
 
+  // Make a new OTP and store only its hash (never the plain OTP).
   const otp = generateOtp();
   const otpHash = await bcrypt.hash(otp, 10);
 
+  // Cancel any older, still-active OTP for this user first.
   await pool.query(
     `UPDATE password_reset_otps
      SET consumed_at = NOW()
@@ -384,12 +422,14 @@ router.post('/forgot-password', async (req, res) => {
     [user.id, otpHash]
   );
 
+  // Text the OTP to the user's phone via Twilio.
   const smsBody = `Nazar AI OTP: ${otp}. Valid for ${OTP_TTL_MINUTES} minutes. Do not share this code.`;
   const smsResult = await sendTwilioSmsMessage({
     to: userPhone,
     message: smsBody,
   });
 
+  // Report specific, helpful errors if the SMS could not be sent.
   if (!smsResult.ok) {
     if (smsResult.internalReason === 'MISSING_SMS_SENDER') {
       return res.status(500).json({
@@ -415,6 +455,7 @@ router.post('/forgot-password', async (req, res) => {
   return res.json({ message: `OTP sent to your registered mobile ending with ${maskPhoneNumber(userPhone)}.` });
 });
 
+// Finish the "forgot password" process: check the OTP, then set the new password.
 router.post('/reset-password', async (req, res) => {
   const parsed = resetPasswordWithOtpSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -424,6 +465,7 @@ router.post('/reset-password', async (req, res) => {
   const normalizedEmail = parsed.data.email.toLowerCase();
   const { otp, newPassword } = parsed.data;
 
+  // Find the most recent, not-yet-used OTP for this email.
   const otpResult = await pool.query<{
     id: string;
     user_id: string;
@@ -449,11 +491,13 @@ router.post('/reset-password', async (req, res) => {
   const otpRecord = otpResult.rows[0];
   const isExpired = new Date(otpRecord.expires_at).getTime() < Date.now();
 
+  // Reject if the OTP is too old.
   if (isExpired) {
     await pool.query('UPDATE password_reset_otps SET consumed_at = NOW() WHERE id = $1', [otpRecord.id]);
     return res.status(400).json({ message: 'Invalid or expired OTP.' });
   }
 
+  // Reject if too many wrong OTPs were already tried.
   if (otpRecord.attempts >= OTP_MAX_ATTEMPTS) {
     await pool.query('UPDATE password_reset_otps SET consumed_at = NOW() WHERE id = $1', [otpRecord.id]);
     return res.status(400).json({ message: 'Too many invalid OTP attempts. Please request a new OTP.' });
@@ -461,11 +505,13 @@ router.post('/reset-password', async (req, res) => {
 
   const validOtp = await bcrypt.compare(otp, otpRecord.otp_hash);
 
+  // Wrong OTP: count the attempt and reject.
   if (!validOtp) {
     await pool.query('UPDATE password_reset_otps SET attempts = attempts + 1 WHERE id = $1', [otpRecord.id]);
     return res.status(400).json({ message: 'Invalid or expired OTP.' });
   }
 
+  // OTP is correct: set the new password and mark the OTP as used.
   const newPasswordHash = await bcrypt.hash(newPassword, 10);
 
   await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newPasswordHash, otpRecord.user_id]);

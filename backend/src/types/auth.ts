@@ -1,8 +1,13 @@
+// This file has shared type definitions for users and their roles.
+
+// The kinds of accounts the app supports.
 export const USER_ROLES = ['citizen', 'municipal', 'department', 'admin'] as const;
 
 export type UserRole = (typeof USER_ROLES)[number];
+// Which portal the user is logging in from.
 export type LoginPortalRole = 'citizen' | 'municipal' | 'department';
 
+// The full user row as stored in the database (includes internal fields).
 export interface UserRecord {
   id: string;
   first_name: string;
@@ -25,6 +30,7 @@ export interface UserRecord {
   last_login_at: string | null;
 }
 
+// The safe, cleaned-up user shape that gets sent to the frontend.
 export interface PublicUser {
   uid: string;
   name: string;

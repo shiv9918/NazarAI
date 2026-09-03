@@ -1,3 +1,7 @@
+// This file decides which government department should handle a citizen's report,
+// based on the type of issue (pothole, streetlight, water leak, etc).
+
+// Direct map from issue type keyword to department code.
 const departmentByType: Record<string, string> = {
   // Pothole & Road Damage → PWD (Public Works Department)
   pothole: 'pwd',
@@ -48,6 +52,7 @@ const departmentByType: Record<string, string> = {
   dump: 'sanitation',
 };
 
+// The complete list of allowed department codes.
 export const validDepartments = new Set([
   'pwd',           // Public Works Department
   'bses',          // BSES/NDMC (Electrical)
@@ -59,6 +64,7 @@ export const validDepartments = new Set([
   'administration' // Default fallback
 ]);
 
+// Friendly display names for each department code.
 export const departmentLabels: Record<string, string> = {
   pwd: 'PWD (Public Works Dept)',
   bses: 'BSES / NDMC',
@@ -70,6 +76,7 @@ export const departmentLabels: Record<string, string> = {
   administration: 'Municipal Administration'
 };
 
+// Clean up a department name/value into one of the standard department codes.
 export function normalizeDepartment(value?: string | null) {
   if (!value) return null;
   const normalized = value.toLowerCase().trim();
@@ -86,9 +93,11 @@ export function normalizeDepartment(value?: string | null) {
   return normalized;
 }
 
+// Work out which department should get a report, trying the exact type first,
+// then keyword guesses, then falling back to whatever was requested (or admin).
 export function assignDepartment(issueType: string, requestedDepartment?: string | null) {
   const normalizedType = issueType.toLowerCase().trim().replace(/\s+/g, '_');
-  
+
   // Direct lookup in mapping
   if (departmentByType[normalizedType]) {
     return departmentByType[normalizedType];

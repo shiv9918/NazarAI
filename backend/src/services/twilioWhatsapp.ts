@@ -1,5 +1,7 @@
+// This file sends SMS and WhatsApp messages to users through Twilio's API.
 import { env } from '../config/env';
 
+// Result shape returned after trying to send an SMS.
 export type SmsSendResult = {
   ok: boolean;
   internalReason?: string;
@@ -7,6 +9,7 @@ export type SmsSendResult = {
   providerMessage?: string;
 };
 
+// Result shape returned after trying to send a WhatsApp message.
 export type WhatsAppSendResult = {
   ok: boolean;
   internalReason?: 'MISSING_TWILIO_CONFIG' | 'TWILIO_RATE_LIMITED' | 'TWILIO_REQUEST_FAILED';
@@ -15,6 +18,7 @@ export type WhatsAppSendResult = {
   providerMessage?: string;
 };
 
+// Build the "Authorization" header Twilio needs, using the account SID and auth token.
 function getTwilioAuthHeader() {
   if (!env.twilioAccountSid || !env.twilioAuthToken) {
     return null;
@@ -24,6 +28,7 @@ function getTwilioAuthHeader() {
   return `Basic ${credentials}`;
 }
 
+// Get the WhatsApp sender number, making sure it has the "whatsapp:" prefix Twilio expects.
 function getTwilioWhatsappFromNumber() {
   if (!env.twilioWhatsappNumber) {
     return null;
@@ -36,6 +41,7 @@ function getTwilioWhatsappFromNumber() {
   return `whatsapp:${env.twilioWhatsappNumber}`;
 }
 
+// Get the plain SMS sender number, if one is configured.
 function getTwilioSmsFromNumber() {
   if (!env.twilioSmsNumber) {
     return null;
@@ -44,6 +50,7 @@ function getTwilioSmsFromNumber() {
   return env.twilioSmsNumber.trim();
 }
 
+// Get the Twilio "Messaging Service" ID, an alternative way to send SMS without a fixed number.
 function getTwilioMessagingServiceSid() {
   if (!env.twilioMessagingServiceSid) {
     return null;
@@ -52,6 +59,7 @@ function getTwilioMessagingServiceSid() {
   return env.twilioMessagingServiceSid.trim();
 }
 
+// Clean up a phone number into the international "+countrycode..." format Twilio needs.
 function normalizeSmsToNumber(raw: string) {
   const trimmed = raw.trim().replace(/^whatsapp:/i, '');
   if (!trimmed) return null;
@@ -75,6 +83,8 @@ function normalizeSmsToNumber(raw: string) {
   return `+${digits}`;
 }
 
+// Send a WhatsApp message (with optional images/media) and return a detailed result,
+// including the reason if it failed.
 export async function sendTwilioWhatsAppMessageDetailed(params: {
   to: string;
   message: string;
@@ -120,6 +130,7 @@ export async function sendTwilioWhatsAppMessageDetailed(params: {
     body: form,
   });
 
+  // If Twilio rejected the request, try to read its error details before giving up.
   if (!response.ok) {
     const errorBody = await response.text().catch(() => '');
     let providerCode: number | undefined;
@@ -163,6 +174,7 @@ export async function sendTwilioWhatsAppMessageDetailed(params: {
   return { ok: true };
 }
 
+// Simple version of the WhatsApp sender that just returns true/false success.
 export async function sendTwilioWhatsAppMessage(params: {
   to: string;
   message: string;
@@ -173,6 +185,7 @@ export async function sendTwilioWhatsAppMessage(params: {
   return result.ok;
 }
 
+// Send a plain SMS text message through Twilio.
 export async function sendTwilioSmsMessage(params: {
   to: string;
   message: string;

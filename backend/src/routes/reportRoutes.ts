@@ -1,3 +1,5 @@
+// This file has all the routes for citizen reports: creating them, listing them,
+// updating their status, tracking leaderboard points, and detecting duplicates.
 import { Router } from 'express';
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
@@ -7,6 +9,7 @@ import { UserRole } from '../types/auth';
 import { assignDepartment, normalizeDepartment, validDepartments } from '../utils/reportAssignment';
 import { sendResolvedWhatsappNotificationWithFeedback } from '../services/whatsappResolutionFlow';
 
+// Shape of a user row read from the database.
 type DbUser = {
   id: string;
   first_name: string;
@@ -17,6 +20,7 @@ type DbUser = {
   department: string | null;
 };
 
+// Shape of a report row read from the database (minimal fields, used internally).
 type DbReport = {
   id: string;
   department: string;
@@ -27,6 +31,7 @@ type DbReport = {
   resolution_notes: string | null;
 };
 
+// Shape of one row in the citizen points leaderboard.
 type LeaderboardRow = {
   id: string;
   name: string;
@@ -36,6 +41,7 @@ type LeaderboardRow = {
   rank: number;
 };
 
+// Rules for validating a new report submission.
 const reportPayloadSchema = z.object({
   id: z.string().uuid().optional(),
   type: z.string().trim().min(1),
@@ -52,6 +58,7 @@ const reportPayloadSchema = z.object({
   aiDescription: z.string().trim().optional().nullable(),
 });
 
+// Rules for validating a "change status" request (e.g. mark resolved).
 const updateStatusSchema = z.object({
   status: z.enum(['reported', 'in_progress', 'resolved']),
   proofImageUrl: z.string().trim().optional().nullable(),
@@ -59,6 +66,7 @@ const updateStatusSchema = z.object({
   resolvedByOfficer: z.string().trim().optional().nullable(),
 });
 
+// Rules for validating a general report update (status, department, notes, etc).
 const updateReportSchema = z.object({
   status: z.enum(['reported', 'in_progress', 'resolved']).optional(),
   department: z.string().trim().optional(),
@@ -68,6 +76,7 @@ const updateReportSchema = z.object({
   isEmergency: z.boolean().optional(),
 });
 
+// The full list of issue types the app understands, grouped by which department handles them.
 const allowedIssueTypes = new Set([
   // PWD (Public Works Dept) - Roads
   'pothole',
@@ -104,6 +113,8 @@ const allowedIssueTypes = new Set([
 ]);
 
 
+// Reusable SQL snippet: picks all report columns and renames them to the
+// camelCase field names the frontend expects.
 const selectReportProjection = `
   id,
   complaint_number AS "complaintNumber",
@@ -144,16 +155,19 @@ const selectReportProjection = `
   ai_description AS "aiDescription"
 `;
 
+// Check a "proof of resolution" image is either an uploaded data URL or a real image link.
 function isValidProofImage(value: string) {
   const trimmed = value.trim();
   return trimmed.startsWith('data:image/') || /^https?:\/\//i.test(trimmed);
 }
 
+// Resolution notes must be at least 20 characters to be considered meaningful.
 function isValidResolutionNotes(value: string | null | undefined) {
   if (!value) return false;
   return value.trim().length >= 20;
 }
 
+// Make a fingerprint (hash) of an uploaded image so we can detect duplicate photos.
 function getDataUrlImageHash(imageUrl?: string | null) {
   if (!imageUrl) return null;
   const trimmed = imageUrl.trim();
@@ -166,6 +180,7 @@ function getDataUrlImageHash(imageUrl?: string | null) {
   return createHash('sha256').update(base64Payload).digest('hex');
 }
 
+// Look up the logged-in user's full record from the database.
 async function getCurrentUser(userId: string) {
   const result = await pool.query<DbUser>(
     `SELECT id, first_name, last_name, email, phone, role, department
@@ -180,8 +195,10 @@ async function getCurrentUser(userId: string) {
 
 const router = Router();
 
+// Every route below requires the user to be logged in.
 router.use(requireAuth);
 
+// Create a new citizen report.
 router.post('/', async (req, res) => {
   const parsed = reportPayloadSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -205,6 +222,7 @@ router.post('/', async (req, res) => {
     });
   }
 
+  // Block near-duplicate reports: same citizen, same photo (or same spot), nearby location.
   if (report.imageUrl) {
     const incomingImageHash = getDataUrlImageHash(report.imageUrl);
     const duplicateResult = await pool.query<{ id: string; complaint_code: string }>(
@@ -240,6 +258,7 @@ router.post('/', async (req, res) => {
     }
   }
 
+  // Work out which department should handle this, and save the report.
   const assignedDepartment = assignDepartment(report.type, report.department);
   const citizenName = `${currentUser.first_name} ${currentUser.last_name}`.trim();
 
@@ -312,6 +331,8 @@ router.post('/', async (req, res) => {
   return res.status(201).json({ report: inserted.rows[0] });
 });
 
+// List reports. Citizens see only their own; department staff see only their department's;
+// municipal/admin see everything.
 router.get('/', async (req, res) => {
   const currentUser = await getCurrentUser(req.auth!.uid);
   if (!currentUser) {
@@ -335,6 +356,8 @@ router.get('/', async (req, res) => {
   return res.json({ reports: result.rows });
 });
 
+// Get the top 50 citizens ranked by points (reports made + reports resolved),
+// plus the logged-in user's own rank even if they're outside the top 50.
 router.get('/leaderboard', async (req, res) => {
   const currentUser = await getCurrentUser(req.auth!.uid);
   if (!currentUser) {
@@ -407,6 +430,8 @@ router.get('/leaderboard', async (req, res) => {
   });
 });
 
+// Get one report by its database ID, its complaint code (like CMP-2026-000123), or (as a
+// last resort) by matching the complaint number alone.
 router.get('/:id', async (req, res) => {
   const currentUser = await getCurrentUser(req.auth!.uid);
   if (!currentUser) {
@@ -471,6 +496,8 @@ router.get('/:id', async (req, res) => {
   return res.json({ report: fullReport.rows[0] });
 });
 
+// Update a report's status, department, notes, proof image, etc.
+// Only department/municipal/admin staff can do this, and only for their own department.
 router.patch('/:id', async (req, res) => {
   const parsed = updateReportSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -518,6 +545,7 @@ router.patch('/:id', async (req, res) => {
     return res.status(403).json({ message: 'You cannot update reports outside your department.' });
   }
 
+  // If the department is changing, make sure it's one of the valid ones.
   const normalizedDepartment = parsed.data.department !== undefined
     ? normalizeDepartment(parsed.data.department)
     : undefined;
@@ -531,6 +559,7 @@ router.patch('/:id', async (req, res) => {
     ? parsed.data.proofImageUrl
     : existingReport.proof_image_url;
 
+  // Marking as resolved requires a real proof image.
   if (nextStatus === 'resolved' && !nextProofImage) {
     return res.status(400).json({ message: 'Proof image is required when marking issue as resolved.' });
   }
@@ -551,6 +580,8 @@ router.patch('/:id', async (req, res) => {
     ? parsed.data.resolvedByOfficer.trim()
     : `${currentUser.first_name} ${currentUser.last_name}`.trim();
 
+  // Only update the columns that were actually sent (the CASE WHEN checks act as "if provided").
+  // Also auto-fills resolved_at / resolution time / clears reopened flag when status becomes resolved.
   const updated = await pool.query(
     `UPDATE reports
      SET status = CASE WHEN $1::boolean THEN $2::report_status ELSE status END,
@@ -596,6 +627,7 @@ router.patch('/:id', async (req, res) => {
     ]
   );
 
+  // If this update just resolved the report, tell the citizen over WhatsApp.
   if (existingReport.status !== 'resolved' && updated.rows[0]?.status === 'resolved') {
     await sendResolvedWhatsappNotificationWithFeedback(req.params.id);
   }
@@ -603,6 +635,8 @@ router.patch('/:id', async (req, res) => {
   return res.json({ report: updated.rows[0] });
 });
 
+// A more focused version of the update route, just for changing status
+// (and the fields that go along with resolving an issue).
 router.patch('/:id/status', async (req, res) => {
   const parsed = updateStatusSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -690,7 +724,7 @@ router.patch('/:id/status', async (req, res) => {
   return res.json({ report: updated.rows[0] });
 });
 
-// Reassign reopened complaint from admin to department
+// After a citizen reopens a complaint, an admin can send it to a different department.
 router.post('/:id/reassign', async (req, res) => {
   const parsed = z.object({
     department: z.string().trim().min(1),
@@ -742,7 +776,8 @@ router.post('/:id/reassign', async (req, res) => {
   return res.json({ report: updated.rows[0] });
 });
 
-// Submit satisfaction feedback on resolved report
+// Let a citizen say whether they're happy with how their resolved report was handled
+// (same idea as the WhatsApp feedback flow, but through the web app instead).
 router.post('/:id/satisfaction', async (req, res) => {
   const parsed = z.object({
     satisfied: z.boolean(),

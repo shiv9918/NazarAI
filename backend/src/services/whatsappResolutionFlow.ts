@@ -1,4 +1,8 @@
+// This file manages the WhatsApp back-and-forth after a report is marked resolved:
+// asking the citizen if they're happy, reopening the report if not, and sending reminders.
 
+// If a citizen already said "not fixed" and we're waiting for them to explain why,
+// this checks their new message and reopens the complaint with that explanation.
 export async function handleReopenedComplaintDetailedFeedback(params: {
   citizenId: string;
   bodyText: string;
@@ -60,6 +64,7 @@ export async function handleReopenedComplaintDetailedFeedback(params: {
 import { pool } from '../config/db';
 import { sendTwilioWhatsAppMessage } from './twilioWhatsapp';
 
+// Shape of the data we need to build the "your report was resolved" WhatsApp message.
 type ResolutionWhatsappRow = {
   id: string;
   complaint_code: string;
@@ -76,6 +81,7 @@ type ResolutionWhatsappRow = {
   citizen_phone: string | null;
 };
 
+// Shape of a "waiting for citizen feedback" record.
 type PendingFeedbackRow = {
   report_id: string;
   complaint_code: string;
@@ -87,6 +93,7 @@ type PendingFeedbackRow = {
   resolution_notes: string | null;
 };
 
+// Turn a department code into a friendly display name.
 function departmentToLabel(department: string) {
   const map: Record<string, string> = {
     pwd: 'PWD (Public Works Department)',
@@ -107,10 +114,12 @@ function departmentToLabel(department: string) {
   return map[department] || `${department} Department`;
 }
 
+// Strip everything from a phone number except digits and the leading "+".
 function normalizePhone(raw: string) {
   return raw.replace(/[^\d+]/g, '').trim();
 }
 
+// Make sure a phone number is in the "whatsapp:+..." format Twilio expects.
 function ensureWhatsappTo(phone: string) {
   if (phone.startsWith('whatsapp:')) {
     return phone;
@@ -121,6 +130,7 @@ function ensureWhatsappTo(phone: string) {
   return `whatsapp:${withPlus}`;
 }
 
+// Translate an issue type code into Hindi for citizen-facing messages.
 function issueTypeToHindi(issueType: string) {
   const map: Record<string, string> = {
     garbage: 'कचरा',
@@ -134,6 +144,7 @@ function issueTypeToHindi(issueType: string) {
   return map[issueType] || issueType.replace(/_/g, ' ');
 }
 
+// Turn the time between two dates into a friendly "X days Y hours" string.
 function formatDuration(from: Date, to: Date) {
   const totalHours = Math.max(0, Math.round((to.getTime() - from.getTime()) / (1000 * 60 * 60)));
   const days = Math.floor(totalHours / 24);
@@ -146,6 +157,7 @@ function formatDuration(from: Date, to: Date) {
   return `${hours} hour${hours === 1 ? '' : 's'}`;
 }
 
+// Create or reset a "waiting for feedback" record for a report, due in 24 hours.
 async function upsertPendingFeedback(params: { reportId: string; citizenId: string; toPhone: string }) {
   await pool.query(
     `INSERT INTO whatsapp_feedback_requests (
@@ -173,6 +185,7 @@ async function upsertPendingFeedback(params: { reportId: string; citizenId: stri
   );
 }
 
+// Hindi message asking the citizen if the issue was really fixed.
 function ratingPrompt(reportId: string) {
   return [
     '🔍 *क्या आपकी शिकायत सही से ठीक हो गई?*',
@@ -184,6 +197,7 @@ function ratingPrompt(reportId: string) {
   ].join('\n');
 }
 
+// Hindi reminder message sent if the citizen hasn't replied yet.
 function reminderPrompt(reportId: string) {
   return [
     '⏰ *समीक्षा के लिए अनुस्मारक*',
@@ -198,6 +212,7 @@ function reminderPrompt(reportId: string) {
   ].join('\n');
 }
 
+// Hindi message asking the citizen to describe why the issue isn't fixed yet.
 function askForReopenDetails(reportId: string) {
   return [
     '❌ *समस्या अभी बाकी है?*',
@@ -214,6 +229,7 @@ function askForReopenDetails(reportId: string) {
   ].join('\n');
 }
 
+// Hindi message confirming a complaint has been reopened. (Currently unused elsewhere in this file.)
 function getReopenConfirmationMessage(reportId: string, hindiIssue: string) {
   return [
     '🔄 *आपकी शिकायत फिर से खोली गई है*',
@@ -229,6 +245,7 @@ function getReopenConfirmationMessage(reportId: string, hindiIssue: string) {
   ].join('\n');
 }
 
+// Hindi message telling the citizen which department the reopened complaint was sent to.
 function getReopenRoutedMessage(reportId: string, department: string) {
   return [
     '🔄 *आपकी शिकायत फिर से खोली गई है*',
@@ -239,6 +256,8 @@ function getReopenRoutedMessage(reportId: string, department: string) {
   ].join('\n');
 }
 
+// Tell the citizen (over WhatsApp) that their report was resolved, then ask
+// them to confirm it's really fixed, and start the 24h feedback wait.
 export async function sendResolvedWhatsappNotificationWithFeedback(reportId: string) {
   const result = await pool.query<ResolutionWhatsappRow>(
     `SELECT
@@ -316,6 +335,7 @@ export async function sendResolvedWhatsappNotificationWithFeedback(reportId: str
   });
 }
 
+// Guess whether a citizen's reply means "yes, fixed" or "no, not fixed".
 function parseFeedbackChoice(message: string): 'satisfied' | 'unsatisfied' | null {
   const text = message.toLowerCase();
 
@@ -333,6 +353,7 @@ function parseFeedbackChoice(message: string): 'satisfied' | 'unsatisfied' | nul
   return null;
 }
 
+// Process an incoming WhatsApp reply to the "was it fixed?" question.
 export async function handleIncomingResolutionFeedback(params: {
   citizenId: string;
   fromPhone: string;
@@ -372,6 +393,7 @@ export async function handleIncomingResolutionFeedback(params: {
     return { handled: false as const };
   }
 
+  // Citizen confirmed it's fixed: close out the feedback loop.
   if (feedback === 'satisfied') {
     await pool.query(
       `UPDATE reports
@@ -419,6 +441,8 @@ export async function handleIncomingResolutionFeedback(params: {
   };
 }
 
+// Send a reminder WhatsApp message for every feedback request that's now overdue
+// and hasn't already gotten a reminder. Runs on a timer (see server.ts).
 export async function sendPendingFeedbackReminders() {
   const dueRows = await pool.query<PendingFeedbackRow>(
     `SELECT

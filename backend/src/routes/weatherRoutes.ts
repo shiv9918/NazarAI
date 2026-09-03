@@ -1,3 +1,5 @@
+// This file has the routes for checking rain/weather risk and sending
+// or acknowledging weather alerts to department dashboards.
 import { Router } from 'express';
 import { z } from 'zod';
 import { pool } from '../config/db';
@@ -7,6 +9,7 @@ import { getWeather48hSummary, RainfallSeverity } from '../services/weatherServi
 
 const router = Router();
 
+// Shape of a user row read from the database.
 type DbUser = {
   id: string;
   first_name: string;
@@ -15,6 +18,7 @@ type DbUser = {
   department: string | null;
 };
 
+// Shape of the newest active weather alert, as read from the database.
 type DbLatestAlert = {
   id: string;
   severity: RainfallSeverity;
@@ -28,6 +32,7 @@ type DbLatestAlert = {
   created_by_name: string;
 };
 
+// Shape of a weather alert notification sent to one specific department.
 type DbDepartmentNotification = {
   notification_id: string;
   alert_id: string;
@@ -43,15 +48,19 @@ type DbDepartmentNotification = {
   expires_at: string;
 };
 
+// Rules for validating the "send alert" request body.
 const sendAlertSchema = z.object({
   message: z.string().trim().min(5).max(500).optional(),
   force: z.boolean().optional(),
 });
 
+// The list of departments that can receive weather alerts.
 const VALID_DEPARTMENTS = ['roads', 'sanitation', 'electrical', 'water', 'administration'] as const;
 
+// Every route below requires the user to be logged in.
 router.use(requireAuth);
 
+// Look up the logged-in user's full record from the database.
 async function getCurrentUser(userId: string) {
   const result = await pool.query<DbUser>(
     `SELECT id, first_name, last_name, role, department
@@ -64,6 +73,7 @@ async function getCurrentUser(userId: string) {
   return result.rows[0] || null;
 }
 
+// Get the most recent weather alert that is still active (not expired).
 async function getLatestActiveAlert() {
   const result = await pool.query<DbLatestAlert>(
     `SELECT
@@ -88,10 +98,12 @@ async function getLatestActiveAlert() {
   return result.rows[0] || null;
 }
 
+// Only municipal and admin users are allowed to send weather alerts.
 function canManageAlerts(role: UserRole) {
   return role === 'municipal' || role === 'admin';
 }
 
+// Get a quick summary: current rain risk plus the latest alert, if any.
 router.get('/summary', async (req, res) => {
   const currentUser = await getCurrentUser(req.auth!.uid);
   if (!currentUser) {
@@ -127,6 +139,7 @@ router.get('/summary', async (req, res) => {
   }
 });
 
+// Create and send a new weather alert to all departments.
 router.post('/send-alert', async (req, res) => {
   const currentUser = await getCurrentUser(req.auth!.uid);
   if (!currentUser) {
@@ -143,9 +156,11 @@ router.post('/send-alert', async (req, res) => {
   }
 
   try {
+    // Get the live rain forecast to decide how serious this alert is.
     const providerResult = await getWeather48hSummary();
     const weather = providerResult.weather;
 
+    // Block sending a "false alarm" alert unless the sender forces it.
     if (weather.severity === 'none' && !parsed.data.force) {
       return res.status(400).json({
         message: 'Rainfall is below alert threshold. Use force=true if you still want to send a preparedness note.',
@@ -192,6 +207,7 @@ router.post('/send-alert', async (req, res) => {
 
     const alert = insertedAlert.rows[0];
 
+    // Create a notification row for every department so each one sees the alert.
     await pool.query(
       `INSERT INTO weather_department_notifications (alert_id, department)
        SELECT $1, UNNEST($2::text[])
@@ -215,6 +231,7 @@ router.post('/send-alert', async (req, res) => {
   }
 });
 
+// Get the active weather alerts sent to the logged-in department user's own department.
 router.get('/department-notifications', async (req, res) => {
   const currentUser = await getCurrentUser(req.auth!.uid);
   if (!currentUser) {
@@ -272,6 +289,7 @@ router.get('/department-notifications', async (req, res) => {
   });
 });
 
+// Mark one department notification as acknowledged/read.
 router.post('/department-notifications/:notificationId/ack', async (req, res) => {
   const currentUser = await getCurrentUser(req.auth!.uid);
   if (!currentUser) {

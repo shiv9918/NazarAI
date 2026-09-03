@@ -1,3 +1,6 @@
+// This file is the WhatsApp "chatbot" flow: it receives incoming WhatsApp messages
+// from Twilio, walks a citizen through reporting an issue (photo -> location ->
+// create report), and answers status checks and feedback replies.
 import { Router } from 'express';
 import { createHash } from 'node:crypto';
 import { pool } from '../config/db';
@@ -8,6 +11,7 @@ import { sendTwilioWhatsAppMessage, sendTwilioWhatsAppMessageDetailed } from '..
 import { handleIncomingResolutionFeedback, handleReopenedComplaintDetailedFeedback } from '../services/whatsappResolutionFlow';
 import { reverseGeocodeCoordinates } from '../services/geocodingService';
 
+// Shape of a citizen user row read from the database.
 type DbCitizen = {
   id: string;
   first_name: string;
@@ -17,6 +21,8 @@ type DbCitizen = {
   phone: string | null;
 };
 
+// Shape of the in-progress "conversation state" for a citizen (what step they're on
+// while building a report through WhatsApp).
 type DbWhatsappSession = {
   citizen_id: string;
   from_phone: string;
@@ -28,6 +34,7 @@ type DbWhatsappSession = {
   flow_state: 'waiting_for_image' | 'waiting_for_location' | 'ready_to_process' | null;
 };
 
+// Shape of a report's info used when replying to a "check status" request.
 type DbWhatsappStatusReport = {
   id: string;
   complaint_code: string;
@@ -45,6 +52,7 @@ type DbWhatsappStatusReport = {
   reopen_votes: number;
 };
 
+// Wrap a plain reply as the XML (TwiML) format Twilio expects for WhatsApp replies.
 function xmlMessage(text: string) {
   const safe = text
     .replace(/&/g, '&amp;')
@@ -54,16 +62,19 @@ function xmlMessage(text: string) {
   return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${safe}</Message></Response>`;
 }
 
+// Send an immediate WhatsApp reply back through the webhook response itself.
 async function respondWhatsAppMessage(res: any, _to: string, message: string) {
   // Respond with TwiML directly so inbound WhatsApp messages always get an immediate reply.
   res.type('text/xml');
   return res.status(200).send(xmlMessage(message));
 }
 
+// Strip everything from a phone number except digits and the leading "+".
 function normalizePhone(raw: string) {
   return raw.replace(/[^\d+]/g, '').trim();
 }
 
+// Make a fingerprint (hash) of an uploaded image so we can detect duplicate photos.
 function getDataUrlImageHash(imageUrl?: string | null) {
   if (!imageUrl) return null;
   const trimmed = imageUrl.trim();
@@ -76,10 +87,12 @@ function getDataUrlImageHash(imageUrl?: string | null) {
   return createHash('sha256').update(base64Payload).digest('hex');
 }
 
+// Remove the "whatsapp:" prefix Twilio adds to phone numbers.
 function stripWhatsappPrefix(value: string) {
   return value.startsWith('whatsapp:') ? value.slice('whatsapp:'.length) : value;
 }
 
+// Turn Twilio's incoming "From" number into standard "+countrycode..." format.
 function toE164FromIncoming(fromRaw: string) {
   const normalized = normalizePhone(stripWhatsappPrefix(fromRaw));
   if (!normalized) {
@@ -93,6 +106,8 @@ function toE164FromIncoming(fromRaw: string) {
   return `+${normalized}`;
 }
 
+// Keep the citizen's saved phone number in sync with whatever number they're
+// actually messaging from on WhatsApp.
 async function syncCitizenPhoneWithIncoming(citizenId: string, fromRaw: string, existingPhone?: string | null) {
   const incomingE164 = toE164FromIncoming(fromRaw);
   if (!incomingE164) {
@@ -112,6 +127,8 @@ async function syncCitizenPhoneWithIncoming(citizenId: string, fromRaw: string, 
   );
 }
 
+// Try to find latitude/longitude numbers inside a text message (plain "lat,lng"
+// or pasted Google Maps links).
 function parseCoordinatesFromBody(bodyText: string) {
   const patterns = [
     /(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/, // plain: 28.61,77.20
@@ -134,6 +151,7 @@ function parseCoordinatesFromBody(bodyText: string) {
   return { lat, lng };
 }
 
+// Pull an address out of the citizen's message text, if they labeled it (e.g. "Address: ...").
 function extractAddressText(bodyText: string, fallbackAddress?: string | null) {
   const fromLabel = bodyText.match(/(?:address|location|loc)\s*[:\-]\s*(.+)$/i);
   if (fromLabel?.[1]?.trim()) {
@@ -151,6 +169,7 @@ function extractAddressText(bodyText: string, fallbackAddress?: string | null) {
   return null;
 }
 
+// Check if the message is a "status <complaint id>" command, and pull out the ID if so.
 function extractStatusLookupId(bodyText: string) {
   const trimmed = bodyText.trim();
   if (!trimmed) {
@@ -165,6 +184,7 @@ function extractStatusLookupId(bodyText: string) {
   return match[1].trim().toUpperCase();
 }
 
+// Reply in Hindi if the citizen used the Hindi status command word.
 function detectStatusCommandLanguage(bodyText: string): 'en' | 'hi' {
   const trimmed = bodyText.trim();
   if (/^(?:स्थिति|स्टेटस)\s+/i.test(trimmed)) {
@@ -174,6 +194,7 @@ function detectStatusCommandLanguage(bodyText: string): 'en' | 'hi' {
   return 'en';
 }
 
+// Friendly display text for a report status.
 function getStatusLabel(status: 'reported' | 'in_progress' | 'resolved') {
   if (status === 'in_progress') {
     return 'IN PROGRESS';
@@ -182,6 +203,7 @@ function getStatusLabel(status: 'reported' | 'in_progress' | 'resolved') {
   return status.toUpperCase();
 }
 
+// Format a date for showing in a WhatsApp message, or "N/A" if there isn't one.
 function toDisplayDate(value: Date | null) {
   if (!value) {
     return 'N/A';
@@ -197,6 +219,7 @@ function toDisplayDate(value: Date | null) {
   });
 }
 
+// Build the English "here's your complaint status" WhatsApp message.
 function buildWhatsappStatusMessage(report: DbWhatsappStatusReport) {
   const lines = [
     `Complaint ID: ${report.complaint_code}`,
@@ -225,6 +248,7 @@ function buildWhatsappStatusMessage(report: DbWhatsappStatusReport) {
   return lines.join('\n');
 }
 
+// Same status message as above, but in Hindi.
 function buildWhatsappStatusMessageHindi(report: DbWhatsappStatusReport) {
   const statusHindi = report.status === 'reported'
     ? 'दर्ज'
@@ -259,6 +283,8 @@ function buildWhatsappStatusMessageHindi(report: DbWhatsappStatusReport) {
   return lines.join('\n');
 }
 
+// Find the citizen's report that matches a "status" lookup, by complaint code,
+// database ID, or complaint number.
 async function resolveReportForWhatsappStatus(citizenId: string, requestedId: string) {
   const complaintCodePattern = /^[A-Za-z]{3}-\d{4}-\d{4,6}$/;
   const uuidPattern = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
@@ -318,6 +344,7 @@ async function resolveReportForWhatsappStatus(citizenId: string, requestedId: st
   return result.rows[0] || null;
 }
 
+// Build the "Authorization" header needed to download media files from Twilio.
 function getTwilioAuthHeader() {
   if (!env.twilioAccountSid || !env.twilioAuthToken) {
     return null;
@@ -327,6 +354,8 @@ function getTwilioAuthHeader() {
   return `Basic ${credentials}`;
 }
 
+// Find the citizen account matching the WhatsApp sender's phone number
+// (tries an exact match first, then just the last 10 digits as a fallback).
 async function resolveCitizenByPhone(fromRaw: string) {
   const incoming = normalizePhone(stripWhatsappPrefix(fromRaw));
   const incomingDigits = incoming.replace(/\D/g, '');
@@ -352,6 +381,8 @@ async function resolveCitizenByPhone(fromRaw: string) {
   return result.rows[0] || null;
 }
 
+// Download a photo the citizen sent on WhatsApp (from Twilio's media URL) and turn it
+// into a data URL we can store and send to the AI for analysis.
 async function fetchTwilioMediaAsDataUrl(mediaUrl: string): Promise<{ dataUrl: string; mimeType: string } | null> {
   const authHeader = getTwilioAuthHeader();
   if (!authHeader) {
@@ -380,10 +411,13 @@ async function fetchTwilioMediaAsDataUrl(mediaUrl: string): Promise<{ dataUrl: s
       break;
     }
 
+    const errorBody = await candidateResponse.text().catch(() => '');
     console.warn('[WhatsApp] Twilio media download attempt failed', {
       status: candidateResponse.status,
       statusText: candidateResponse.statusText,
       urlPreview: candidateUrl.slice(0, 160),
+      accountSidInUse: env.twilioAccountSid,
+      errorBody: errorBody.slice(0, 500),
     });
   }
 
@@ -411,6 +445,7 @@ async function fetchTwilioMediaAsDataUrl(mediaUrl: string): Promise<{ dataUrl: s
   };
 }
 
+// Check a string is a valid "data:image/..." URL and pull out its MIME type.
 function parseImageDataUrl(input: string): { dataUrl: string; mimeType: string } | null {
   const trimmed = input.trim();
   if (!trimmed.startsWith('data:image/')) {
@@ -434,6 +469,7 @@ function parseImageDataUrl(input: string): { dataUrl: string; mimeType: string }
   };
 }
 
+// Everything needed to actually create the report once all steps are collected.
 type ProcessingPayload = {
   from: string;
   bodyText: string;
@@ -444,6 +480,7 @@ type ProcessingPayload = {
   citizen: DbCitizen;
 };
 
+// Issue types that are allowed to come in through the WhatsApp flow.
 const WHATSAPP_ALLOWED_ISSUE_TYPES = new Set([
   'pothole',
   'garbage_overflow',
@@ -456,6 +493,7 @@ const WHATSAPP_ALLOWED_ISSUE_TYPES = new Set([
   'public_bench_broken',
 ]);
 
+// Maps other spellings of an issue type to the standard WhatsApp issue type.
 const WHATSAPP_ISSUE_TYPE_ALIASES: Record<string, string> = {
   garbage: 'garbage_overflow',
   garbage_overflow: 'garbage_overflow',
@@ -472,6 +510,7 @@ const WHATSAPP_ISSUE_TYPE_ALIASES: Record<string, string> = {
   public_bench_broken: 'public_bench_broken',
 };
 
+// Which department should get each WhatsApp-reported issue type.
 const WHATSAPP_ISSUE_TO_DEPARTMENT: Record<string, string> = {
   pothole: 'pwd',
   garbage_overflow: 'sanitation',
@@ -485,6 +524,7 @@ const WHATSAPP_ISSUE_TO_DEPARTMENT: Record<string, string> = {
   public_bench_broken: 'administration',
 };
 
+// Guess the issue type from the citizen's own message text (English/Hindi keywords).
 function inferWhatsappIssueTypeFromText(text: string) {
   const t = text.toLowerCase();
 
@@ -499,6 +539,7 @@ function inferWhatsappIssueTypeFromText(text: string) {
   return null;
 }
 
+// Clean up a raw issue type into one of the allowed WhatsApp issue types, or null if invalid.
 function normalizeWhatsappIssueType(rawType: string | null | undefined) {
   if (!rawType) {
     return null;
@@ -513,10 +554,12 @@ function normalizeWhatsappIssueType(rawType: string | null | undefined) {
   return canonical;
 }
 
+// Get the department for an issue type, falling back to the general assignment logic.
 function getWhatsappDepartmentFromIssueType(issueType: string) {
   return WHATSAPP_ISSUE_TO_DEPARTMENT[issueType] || assignDepartment(issueType, null);
 }
 
+// Load the citizen's in-progress WhatsApp report session, if one exists.
 async function getWhatsappSession(citizenId: string, fromPhone: string) {
   const result = await pool.query<DbWhatsappSession>(
     `SELECT citizen_id, from_phone, pending_body, pending_address, pending_lat, pending_lng, pending_media_url, flow_state
@@ -529,6 +572,7 @@ async function getWhatsappSession(citizenId: string, fromPhone: string) {
   return result.rows[0] || null;
 }
 
+// Save (create or update) the citizen's in-progress WhatsApp report session.
 async function upsertWhatsappSession(params: {
   citizenId: string;
   fromPhone: string;
@@ -574,6 +618,7 @@ async function upsertWhatsappSession(params: {
   );
 }
 
+// Delete the citizen's in-progress session (used once a report is created or cancelled).
 async function clearWhatsappSession(citizenId: string, fromPhone: string) {
   await pool.query(
     `DELETE FROM whatsapp_sessions
@@ -582,6 +627,7 @@ async function clearWhatsappSession(citizenId: string, fromPhone: string) {
   );
 }
 
+// Build a message telling the citizen what's still missing (photo and/or location).
 function buildMissingRequirementMessage(hasMedia: boolean, hasAddress: boolean, hasCoordinates: boolean) {
   const missing: string[] = [];
   if (!hasMedia) {
@@ -597,7 +643,11 @@ function buildMissingRequirementMessage(hasMedia: boolean, hasAddress: boolean, 
   return `Thanks! I still need: ${missing.join(', ')}. Please send remaining details. Example: Address: Connaught Place, Delhi Location: 28.6315,77.2167`;
 }
 
+// Once we have a photo + location from the citizen, this actually creates the report:
+// downloads the photo, runs AI detection on it, checks for duplicates, then saves it
+// and confirms back to the citizen over WhatsApp.
 async function processIncomingWhatsappReport(payload: ProcessingPayload) {
+  // Get the photo, either already inline or by downloading it from Twilio.
   const inlineImage = parseImageDataUrl(payload.mediaUrl);
   const image = inlineImage || await fetchTwilioMediaAsDataUrl(payload.mediaUrl);
 
@@ -610,6 +660,7 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
     return;
   }
 
+  // Ask the AI what civic issue this photo shows.
   const detection = await detectIssueFromImage({
     imageBase64: image.dataUrl.split(',')[1],
     mimeType: image.mimeType,
@@ -629,6 +680,7 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
     hasGeminiKey: Boolean(env.geminiApiKey),
   });
 
+  // If the AI wasn't confident, ask for a clearer photo instead of guessing.
   if (detection.diagnosticCode === 'low_confidence' || (typeof detection.confidence === 'number' && detection.confidence < 0.75)) {
     await clearWhatsappSession(payload.citizen.id, normalizePhone(stripWhatsappPrefix(payload.from)));
     await sendTwilioWhatsAppMessage({
@@ -638,11 +690,13 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
     return;
   }
 
+  // If the AI's answer doesn't map to a valid type, try guessing from the citizen's own text.
   let normalizedIssueType = normalizeWhatsappIssueType(detection.issueType);
   if (!normalizedIssueType) {
     normalizedIssueType = inferWhatsappIssueTypeFromText(payload.bodyText || '');
   }
 
+  // Still nothing usable: tell the citizen why and stop (with a specific reason if we know it).
   if (!normalizedIssueType) {
     let classificationMessage = 'I could not confidently identify the issue from this image. Please upload a clearer photo of the issue and send it again.';
 
@@ -662,6 +716,7 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
     return;
   }
 
+  // Block near-duplicate reports: same citizen, same photo (or same spot), nearby location.
   const incomingImageHash = getDataUrlImageHash(image.dataUrl);
   const duplicateResult = await pool.query<{ id: string; complaint_code: string }>(
     `SELECT
@@ -698,6 +753,7 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
     return;
   }
 
+  // No duplicate found: work out the department and save the new report.
   const assignedDepartment = getWhatsappDepartmentFromIssueType(normalizedIssueType);
   const citizenName = `${payload.citizen.first_name} ${payload.citizen.last_name}`.trim();
 
@@ -765,6 +821,7 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
     ]
   );
 
+  // Build a working "track your report" link, avoiding localhost URLs in production.
   const reportId = inserted.rows[0]?.id;
   const complaintCode = inserted.rows[0]?.complaint_code || reportId;
   const configuredTrackBase = env.whatsappTrackBaseUrl?.trim() || '';
@@ -781,6 +838,8 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
     message: confirmationMessage,
   });
 
+  // If the full confirmation message fails to send, retry with a shorter one,
+  // and if that's rate-limited too, at least tell the citizen it was saved.
   if (!confirmationResult.ok) {
     console.warn('[WhatsApp] Primary confirmation failed. Retrying with shorter message.', {
       complaintCode,
@@ -809,6 +868,9 @@ async function processIncomingWhatsappReport(payload: ProcessingPayload) {
 
 const router = Router();
 
+// The single webhook Twilio calls for every incoming WhatsApp message. It routes the
+// message to the right handler: status check, feedback reply, or the step-by-step
+// "send photo, then location" report flow.
 router.post('/webhook', async (req, res) => {
   const from = String(req.body?.From || '');
   const bodyText = String(req.body?.Body || '');
@@ -827,6 +889,7 @@ router.post('/webhook', async (req, res) => {
     return respondWhatsAppMessage(res, 'whatsapp:+0000000000', 'Unable to read sender number. Please retry.');
   }
 
+  // Only known citizen accounts can use the WhatsApp flow.
   const citizen = await resolveCitizenByPhone(from);
   if (!citizen) {
     return respondWhatsAppMessage(
@@ -840,6 +903,7 @@ router.post('/webhook', async (req, res) => {
 
   const fromPhone = normalizePhone(stripWhatsappPrefix(from));
 
+  // If the message is a "status <id>" command, answer it directly and stop.
   const statusLookupId = extractStatusLookupId(bodyText);
   if (statusLookupId) {
     const language = detectStatusCommandLanguage(bodyText);
@@ -969,6 +1033,8 @@ router.post('/webhook', async (req, res) => {
       citizen,
     };
 
+    // Reply to Twilio immediately (below), and do the slower AI/report-creation
+    // work in the background so the webhook doesn't time out.
     setImmediate(() => {
       processIncomingWhatsappReport(payload).catch(async (error) => {
         console.error('WhatsApp report processing failed:', error);
@@ -983,7 +1049,7 @@ router.post('/webhook', async (req, res) => {
     return respondWhatsAppMessage(res, from, '✅ Processing your report. You will receive a confirmation with your complaint ID shortly.');
   }
 
-  // Default fallback
+  // Anything else we don't recognize (shouldn't normally happen).
   return respondWhatsAppMessage(res, from, 'Thanks! We received your message. Please follow the steps to submit your report.');
 });
 

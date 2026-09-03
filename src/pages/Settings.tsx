@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { User, Bell, Shield, Save, Camera, Mail, Phone, MapPin, Navigation } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { getAddressFromCoords, getCurrentPosition } from '../utils/location';
+import { getAddressFromCoords, getCurrentPosition, DEFAULT_FALLBACK_LOCATION } from '../utils/location';
 import { useTranslation } from 'react-i18next';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
@@ -69,12 +69,18 @@ export default function Settings() {
 
   const detectLocation = async () => {
     setIsDetecting(true);
+    setSaveMessage(null);
     try {
       const pos = await getCurrentPosition();
       const address = await getAddressFromCoords(pos.coords.latitude, pos.coords.longitude);
       setFormData(prev => ({ ...prev, location: address }));
     } catch (error) {
-      console.error("Error detecting location:", error);
+      // Live location unavailable - fall back to the default campus address
+      // only here, never when live detection succeeds.
+      console.error("Error detecting live location, using default fallback:", error);
+      const message = error instanceof Error ? error.message : "Unable to fetch current location.";
+      setFormData(prev => ({ ...prev, location: DEFAULT_FALLBACK_LOCATION.address }));
+      setSaveMessage(`${message} Using default location (MMMUT, Gorakhpur). Tap the location icon to retry.`);
     } finally {
       setIsDetecting(false);
     }
