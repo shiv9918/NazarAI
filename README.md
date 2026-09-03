@@ -49,29 +49,28 @@ Modern cities face countless civic challenges every day — potholes, garbage ov
 
 ## 🏗️ System Architecture
 
-```mermaid
 flowchart TB
-    subgraph Citizen_Layer["👥 Citizen Layer"]
-        Web["🌐 Web Portal\nReact + Tailwind"]
-        WA["💬 WhatsApp\nTwilio Webhook"]
+    subgraph Citizen_Layer[Citizen Layer]
+        Web[Web Portal - React and Tailwind]
+        WA[WhatsApp - Twilio Webhook]
     end
 
-    subgraph AI_Layer["🤖 AI Engine"]
-        Gemini["🧠 Google Gemini\nImage & Text Analysis"]
-        OpenCV["📷 OpenCV Model\nImage Detection"]
-        Router["🔄 Smart Router\nDept + Urgency Detection"]
+    subgraph AI_Layer[AI Engine]
+        Gemini[Google Gemini - Image and Text Analysis]
+        OpenCV[OpenCV Model - Image Detection]
+        Router[Smart Router - Department and Urgency Detection]
     end
 
-    subgraph Backend["⚙️ Backend Services"]
-        API["🛠️ Express.js API"]
-        DB["📦 PostgreSQL\nComplaints + Users"]
-        Weather["🌦️ Weather Service\nRainfall Forecasts"]
+    subgraph Backend[Backend Services]
+        API[Express API]
+        DB[PostgreSQL - Complaints and Users]
+        Weather[Weather Service - Rainfall Forecasts]
     end
 
-    subgraph Admin_Layer["🏛️ Admin Layer"]
-        Municipal["📊 Municipal Dashboard"]
-        Dept["🏢 Department Panel"]
-        Alerts["🚨 Alert Center"]
+    subgraph Admin_Layer[Admin Layer]
+        Municipal[Municipal Dashboard]
+        Dept[Department Panel]
+        Alerts[Alert Center]
     end
 
     Web --> API
@@ -79,7 +78,7 @@ flowchart TB
     API --> DB
     API --> OpenCV
     OpenCV --> Gemini
-        Gemini --> Router
+    Gemini --> Router
     Router --> API
     API --> Weather
     API --> Municipal
@@ -87,14 +86,6 @@ flowchart TB
     Weather --> Alerts
     Municipal --> Dept
     Dept --> Web
-
-    style Citizen_Layer fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px
-    style AI_Layer fill:#4c1d95,stroke:#8b5cf6,stroke-width:2px
-    style Backend fill:#065f46,stroke:#10b981,stroke-width:2px
-    style Admin_Layer fill:#7c2d12,stroke:#f97316,stroke-width:2px
-```
-
----
 
 ## 🔄 Application Workflow
 
