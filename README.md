@@ -49,6 +49,7 @@ Modern cities face countless civic challenges every day — potholes, garbage ov
 
 ## 🏗️ System Architecture
 
+```mermaid
 flowchart TB
     subgraph Citizen_Layer[Citizen Layer]
         Web[Web Portal - React and Tailwind]
@@ -86,6 +87,7 @@ flowchart TB
     Weather --> Alerts
     Municipal --> Dept
     Dept --> Web
+```
 
 ## 🔄 Application Workflow
 
@@ -255,9 +257,9 @@ NazarAI/
 │           └── schema.sql  # PostgreSQL migrations
 ├── public/                 # Static assets
 ├── server.ts               # Root dev server
-├── render.yaml             # Render deployment config
-├── vercel.json             # Vercel frontend config
-└── vite.config.ts          # Vite configuration
+├── render.yaml              # Render deployment config
+├── vercel.json              # Vercel frontend config
+└── vite.config.ts           # Vite configuration
 ```
 
 ---
