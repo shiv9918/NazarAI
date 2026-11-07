@@ -1,9 +1,8 @@
 <p align="center">
+  <img src="./docs/readme-assets/hero.gif" width="100%" alt="NazarAI: an isometric city with a rotating scan and pulsing civic issue markers." />
+</p>
 
-<!-- NazerAI Title Banner with Gradient -->
-<h1 align="center" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 3em; font-weight: bold; margin: 0;">✨ NazarAI ✨</h1>
-
-<h3 align="center" style="color: #888; font-size: 1.2em; margin-top: 10px;">AI-Powered Civic Issue Reporting & Municipal Workflow Automation</h3>
+<p align="center"><a href="./docs/readme-assets/hero.svg">View a still version</a></p>
 
 <!-- Badges -->
 <p align="center">
@@ -21,8 +20,6 @@
   <a href="https://www.nazarai.live/"><img src="https://img.shields.io/badge/🚀_Live_Demo-Visit-2563eb?style=for-the-badge" alt="Live Demo" /></a>
   <a href="https://github.com/shiv9918/NazarAI/blob/main/LICENSE"><img src="https://img.shields.io/github/license/shiv9918/NazarAI?style=for-the-badge&color=orange" alt="License" /></a>
   <a href="https://github.com/shiv9918/NazarAI/stargazers"><img src="https://img.shields.io/github/stars/shiv9918/NazarAI?style=for-the-badge&color=gold" alt="Stars" /></a>
-</p>
-
 </p>
 
 ---

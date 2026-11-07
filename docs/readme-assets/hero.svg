@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="360" viewBox="0 0 1000 360">
+<title>NazarAI animated project banner</title>
+<defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#090f1e"/><stop offset="1" stop-color="#152035"/></linearGradient><radialGradient id="glow"><stop stop-color="#5eead4" stop-opacity=".14"/><stop offset="1" stop-color="#5eead4" stop-opacity="0"/></radialGradient><pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" stroke="#889fc3" stroke-opacity=".045" fill="none"/></pattern></defs>
+<rect x="1" y="1" width="998" height="358" rx="22" fill="url(#bg)" stroke="#2b3851"/>
+<rect x="1" y="1" width="998" height="358" rx="22" fill="url(#grid)"/>
+<ellipse cx="770" cy="176" rx="220" ry="180" fill="url(#glow)"/>
+<rect x="44" y="40" width="4" height="15" rx="2" fill="#5eead4"/>
+<text x="58" y="52" fill="#5eead4" font-family="Arial, sans-serif" font-size="12" letter-spacing="2">CIVIC TECH / AI WORKFLOWS</text>
+<text x="42" y="139" fill="#f1f5ff" font-family="Arial, sans-serif" font-size="57" font-weight="700" letter-spacing="-1.6">NazarAI</text>
+<text x="45" y="190" fill="#a8b9d3" font-family="Arial, sans-serif" font-size="19">Intelligence for better cities.</text>
+<rect x="45" y="278" width="130" height="35" rx="7" fill="#111e31" stroke="#5eead4" stroke-opacity="0.72"/>
+<circle cx="58.00" cy="295.00" r="3" fill="#5eead4" opacity="1.0"/>
+<text x="70" y="299" fill="#cbd7e9" font-family="monospace" font-size="11">REPORT</text>
+<rect x="190" y="278" width="130" height="35" rx="7" fill="#111e31" stroke="#5eead4" stroke-opacity="0.35"/>
+<circle cx="203.00" cy="295.00" r="3" fill="#5eead4" opacity="0.5125000000000001"/>
+<text x="215" y="299" fill="#cbd7e9" font-family="monospace" font-size="11">CLASSIFY</text>
+<rect x="335" y="278" width="130" height="35" rx="7" fill="#111e31" stroke="#5eead4" stroke-opacity="0.34"/>
+<circle cx="348.00" cy="295.00" r="3" fill="#5eead4" opacity="0.5124999999999998"/>
+<text x="360" y="299" fill="#cbd7e9" font-family="monospace" font-size="11">RESOLVE</text>
+<path d="M555.00,45.00L555.00,315.00" stroke="#33435d" stroke-width="1" opacity="0.55"/>
+<path d="M739.50,171.20L928.10,254.00" stroke="#2f5363" stroke-width="1" opacity="1"/>
+<path d="M702.60,187.40L891.20,270.20" stroke="#2f5363" stroke-width="1" opacity="1"/>
+<path d="M665.70,203.60L854.30,286.40" stroke="#2f5363" stroke-width="1" opacity="1"/>
+<path d="M628.80,219.80L817.40,302.60" stroke="#2f5363" stroke-width="1" opacity="1"/>
+<path d="M591.90,236.00L780.50,318.80" stroke="#2f5363" stroke-width="1" opacity="1"/>
+<path d="M780.50,171.20L591.90,254.00" stroke="#2f5363" stroke-width="1" opacity="1"/>
+<path d="M817.40,187.40L628.80,270.20" stroke="#2f5363" stroke-width="1" opacity="1"/>
+<path d="M854.30,203.60L665.70,286.40" stroke="#2f5363" stroke-width="1" opacity="1"/>
+<path d="M891.20,219.80L702.60,302.60" stroke="#2f5363" stroke-width="1" opacity="1"/>
+<path d="M928.10,236.00L739.50,318.80" stroke="#2f5363" stroke-width="1" opacity="1"/>
+<polygon points="757.54,197.12 783.78,208.64 783.78,140.64 757.54,129.12" fill="#122539" stroke="#5eead4" opacity="0.9"/><polygon points="783.78,208.64 757.54,220.16 757.54,152.16 783.78,140.64" fill="#1d354a" stroke="#5eead4" opacity="0.9"/><polygon points="757.54,129.12 783.78,140.64 757.54,152.16 731.30,140.64" fill="#244758" stroke="#5eead4" opacity="1"/>
+<circle cx="757.54" cy="125.64" r="3" fill="#7dd3fc" opacity="0.9128233538866225"/>
+<polygon points="814.12,221.24 838.72,232.04 838.72,124.04 814.12,113.24" fill="#122539" stroke="#5eead4" opacity="0.9"/><polygon points="838.72,232.04 814.12,242.84 814.12,134.84 838.72,124.04" fill="#1d354a" stroke="#5eead4" opacity="0.9"/><polygon points="814.12,113.24 838.72,124.04 814.12,134.84 789.52,124.04" fill="#244758" stroke="#5eead4" opacity="1"/>
+<circle cx="814.12" cy="109.04" r="3" fill="#7dd3fc" opacity="0.55"/>
+<polygon points="856.76,246.44 878.90,256.16 878.90,180.16 856.76,170.44" fill="#122539" stroke="#5eead4" opacity="0.9"/><polygon points="878.90,256.16 856.76,265.88 856.76,189.88 878.90,180.16" fill="#1d354a" stroke="#5eead4" opacity="0.9"/><polygon points="856.76,170.44 878.90,180.16 856.76,189.88 834.62,180.16" fill="#244758" stroke="#5eead4" opacity="1"/>
+<circle cx="856.76" cy="165.16" r="3" fill="#7dd3fc" opacity="0.9700225954866956"/>
+<polygon points="705.88,228.44 730.48,239.24 730.48,144.24 705.88,133.44" fill="#122539" stroke="#5eead4" opacity="0.9"/><polygon points="730.48,239.24 705.88,250.04 705.88,155.04 730.48,144.24" fill="#1d354a" stroke="#5eead4" opacity="0.9"/><polygon points="705.88,133.44 730.48,144.24 705.88,155.04 681.28,144.24" fill="#244758" stroke="#5eead4" opacity="1"/>
+<circle cx="705.88" cy="129.24" r="3" fill="#7dd3fc" opacity="0.6724069515000379"/>
+<polygon points="760.00,252.20 787.06,264.08 787.06,208.08 760.00,196.20" fill="#122539" stroke="#5eead4" opacity="0.9"/><polygon points="787.06,264.08 760.00,275.96 760.00,219.96 787.06,208.08" fill="#1d354a" stroke="#5eead4" opacity="0.9"/><polygon points="760.00,196.20 787.06,208.08 760.00,219.96 732.94,208.08" fill="#244758" stroke="#5eead4" opacity="1"/>
+<circle cx="760.00" cy="193.08" r="3" fill="#7dd3fc" opacity="0.6831815360919868"/>
+<polygon points="805.10,275.60 825.60,284.60 825.60,199.60 805.10,190.60" fill="#122539" stroke="#5eead4" opacity="0.9"/><polygon points="825.60,284.60 805.10,293.60 805.10,208.60 825.60,199.60" fill="#1d354a" stroke="#5eead4" opacity="0.9"/><polygon points="805.10,190.60 825.60,199.60 805.10,208.60 784.60,199.60" fill="#244758" stroke="#5eead4" opacity="1"/>
+<circle cx="805.10" cy="184.60" r="3" fill="#7dd3fc" opacity="0.8195080541509604"/>
+<ellipse cx="760" cy="244" rx="33.75" ry="12.5" fill="none" stroke="#5eead4" stroke-width="2" opacity="1.00"/>
+<path d="M760.00,244.00L760.00,184.00" stroke="#5eead4" stroke-width="2" opacity="0.7"/>
+</svg>
