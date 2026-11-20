@@ -66,7 +66,7 @@ This repository includes a root `render.yaml` configured for the backend service
 	- Start Command: `npm run start`
 	- Health Check Path: `/api/health`
 4. Set environment variables in Render:
-	- `DATABASE_URL` (from your Render PostgreSQL instance)
+	- `DATABASE_URL`: copy the **full Internal Database URL** from your Render PostgreSQL instance when the database and backend are in the same account and region. A hostname such as `dpg-example-a` is valid inside this URL; do not paste only the hostname. For connections from outside that account/region, use the full External Database URL with `sslmode=require`.
 	- `JWT_SECRET` (secure random string)
 	- `CORS_ORIGINS` (comma-separated frontend URLs)
 5. Deploy.
@@ -74,3 +74,11 @@ This repository includes a root `render.yaml` configured for the backend service
 Example `CORS_ORIGINS` value:
 
 `https://your-frontend.onrender.com,http://localhost:3000`
+
+### Troubleshooting startup
+
+Older versions rejected Render internal database URLs because their hostnames do not contain a dot. If logs show `DATABASE_URL looks incomplete` for a full internal URL, deploy the updated backend. A valid internal URL has the form `postgresql://USER:PASSWORD@dpg-example-a/DATABASE` (example placeholders only).
+
+Keep database credentials in Render's environment settings, not in Git. After deploying, check `/api/health` for `"ok": true`. A `No open ports detected` message alongside the configuration error is a consequence of startup failing before the server listens; the server already binds to `0.0.0.0` and Render's `PORT`.
+
+Run the configuration regression tests with `npm test` from `backend/`.
