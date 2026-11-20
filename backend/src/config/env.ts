@@ -32,12 +32,13 @@ const DEFAULT_CORS_ORIGINS = [
 
 // Checks and cleans up the DATABASE_URL so it is a proper, usable connection string.
 function normalizeDatabaseUrl(rawValue: string | undefined) {
-  if (!rawValue) {
+  const value = rawValue?.trim();
+  if (!value) {
     throw new Error('DATABASE_URL is required');
   }
 
   // Some tools give a Python-style driver prefix; swap it for the normal one.
-  const withoutPythonDriver = rawValue.replace('postgresql+psycopg2://', 'postgresql://');
+  const withoutPythonDriver = value.replace(/^postgresql\+psycopg2:\/\//i, 'postgresql://');
   let parsed: URL;
 
   try {
@@ -46,10 +47,11 @@ function normalizeDatabaseUrl(rawValue: string | undefined) {
     throw new Error('DATABASE_URL is invalid. Use the full PostgreSQL connection string from Render, for example: postgresql://user:password@host:5432/database');
   }
 
-  // Catch the common mistake of pasting only the host name instead of the full URL.
-  if (parsed.hostname && !parsed.hostname.includes('.') && !['localhost', '127.0.0.1'].includes(parsed.hostname)) {
+  // Render internal URLs use single-label hosts such as dpg-example-a.
+  // Validate the URL structure, not whether the hostname contains a dot.
+  if (!['postgres:', 'postgresql:'].includes(parsed.protocol) || !parsed.hostname) {
     throw new Error(
-      'DATABASE_URL looks incomplete. Use the full Render PostgreSQL connection string, not only the host name. Example: postgresql://user:password@host.render.com:5432/database'
+      'DATABASE_URL is invalid. Use a full postgres:// or postgresql:// connection string with a hostname. On Render, copy the Internal Database URL for services in the same region and account.'
     );
   }
 
